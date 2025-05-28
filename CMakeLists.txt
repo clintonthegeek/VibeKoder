@@ -9,8 +9,8 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets)
-find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets)
+find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network)
+find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network)
 
 set(PROJECT_SOURCES
         main.cpp
@@ -42,12 +42,12 @@ else()
             session.h session.cpp
             openai_message.cpp openai_message.h
             openai_message_model.cpp openai_message_model.h
-            openai_request.cpp openai_request.hpp
+            openai_request.cpp openai_request.h
         )
     endif()
 endif()
 
-target_link_libraries(VibeKoder PRIVATE Qt${QT_VERSION_MAJOR}::Widgets)
+target_link_libraries(VibeKoder PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an

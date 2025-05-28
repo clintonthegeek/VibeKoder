@@ -147,9 +147,10 @@ void MainWindow::onSendPrompt()
 
 void MainWindow::onOpenAIResponse(const QString &response)
 {
-    ui->textEditResponse->append(response);
+    // Append text in QPlainTextEdit:
+    ui->textEditResponse->moveCursor(QTextCursor::End);
+    ui->textEditResponse->insertPlainText(response + "\n");
 
-    // Append assistant slice to session and save
     if (m_session) {
         m_session->appendAssistantSlice(response);
         m_session->save(QString());

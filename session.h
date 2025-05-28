@@ -47,6 +47,8 @@ public:
     void setCommandPipeOutput(const QString& key, const QString& output);
     QString commandPipeOutput(const QString& key) const;
 
+    bool parseSessionMarkdown(const QString &data);
+
 private:
     QString m_filepath;
     Project* m_project;
@@ -54,7 +56,6 @@ private:
     QVector<PromptSlice> m_slices;
     QMap<QString, QString> m_commandPipeOutputs; // @diff, @make outputs...
 
-    bool parseSessionMarkdown(const QString &data);
     QString expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles);
 };
 
