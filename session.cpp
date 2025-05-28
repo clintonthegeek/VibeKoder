@@ -131,7 +131,7 @@ QString Session::compilePrompt()
 
     for (const auto &slice : m_slices) {
         // Expand includes recursively in slice content
-        QString expanded = expandIncludesRecursive(slice.content, visitedFiles);
+        QString expanded = expandIncludesRecursive(slice.content, visitedFiles, 0);
 
         QString intro;
         switch (slice.role) {
@@ -146,18 +146,15 @@ QString Session::compilePrompt()
     return parts.join("\n\n---\n\n");
 }
 
-QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles)
+QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles, int headingLevelOffset)
 {
-    // Looks for <!-- include: path --> markers and includes contents recursively.
-    // Paths relative to project root folder.
-
     static QRegularExpression includeRe(R"(<!--\s*include:\s*(.*?)\s*-->)");
 
     QString result = content;
 
     if (!m_project) {
-        qWarning() << "No project associated with session, cannot resolve includes";
-        return result;
+        qWarning() << "No project associated with session; includes cannot resolve";
+        return promoteMarkdownHeaders(result, headingLevelOffset);
     }
 
     QString rootFolder = m_project->rootFolder();
@@ -166,7 +163,7 @@ QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &
 
     int offset = 0;
     while (true) {
-        QRegularExpressionMatch m = includeRe.match(result, offset);
+        auto m = includeRe.match(result, offset);
         if (!m.hasMatch())
             break;
 
@@ -176,7 +173,7 @@ QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &
         if (visitedFiles.contains(absPath)) {
             qWarning() << "Circular include detected:" << absPath;
             offset = m.capturedEnd(0);
-            continue; // skip to avoid infinite loop
+            continue;
         }
 
         visitedFiles.insert(absPath);
@@ -187,8 +184,12 @@ QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &
             includedContent = incFile.readAll();
             incFile.close();
 
-            // Recursive expansion in included content
-            includedContent = expandIncludesRecursive(includedContent, visitedFiles);
+            // Recursively expand includes with increased heading offset
+            includedContent = expandIncludesRecursive(includedContent, visitedFiles, headingLevelOffset + 1);
+
+            // Promote the included markdown headers by headingLevelOffset + 1 (or your policy)
+            includedContent = promoteMarkdownHeaders(includedContent, headingLevelOffset + 1);
+
         } else {
             includedContent = QString("[Could not include file: %1]").arg(absPath);
         }
@@ -203,7 +204,8 @@ QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &
         visitedFiles.remove(absPath);
     }
 
-    return result;
+    // Finally, promote headers in the current block as well
+    return promoteMarkdownHeaders(result, headingLevelOffset);
 }
 
 void Session::setCommandPipeOutput(const QString &key, const QString &output)
@@ -282,38 +284,6 @@ static QString sanitizeInnerFences(const QString &content, int minFenceLength)
 }
 
 
-QString Session::compiledRawMarkdown() const
-{
-    QString result;
-    for (const auto &slice : m_slices) {
-        QString roleStr;
-        switch (slice.role) {
-        case MessageRole::User: roleStr = "User"; break;
-        case MessageRole::Assistant: roleStr = "Assistant"; break;
-        case MessageRole::System: roleStr = "System"; break;
-        }
-
-        // Recursively sanitize slice content fences here:
-        QString sanitizedContent = sanitizeFencesRecursive(slice.content);
-
-        // Fence length chosen automatically in sanitizer; just use 3 backticks here to open block
-        // because sanitizedContent includes fences of varying length inside already.
-        // But to be safe, let's pick an outer fence at least length 3:
-        // We can reuse sanitizeFencesRecursive to pick the correct fence length, or just hardcode 3 for outer
-
-        // Using 3 backticks as outer fence is safe here because inner fences are all length >= 3+1
-        QString outerFence(3, '`');
-
-        result += QString("### %1 (%2)\n%3markdown\n%4\n%3\n\n")
-                      .arg(roleStr)
-                      .arg(slice.timestamp)
-                      .arg(outerFence)
-                      .arg(sanitizedContent.trimmed());
-    }
-    return result;
-}
-
-
 QString Session::sanitizeFencesRecursive(const QString &markdown, int outerFenceLength)
 {
     QString result = markdown;
@@ -386,4 +356,70 @@ QString Session::sanitizeFencesRecursive(const QString &markdown, int outerFence
              << "final length" << result.length();
 
     return result;
+}
+
+
+
+QString Session::compiledRawMarkdown() const
+{
+    QString result;
+    for (const auto &slice : m_slices) {
+        QString roleStr;
+        switch (slice.role) {
+        case MessageRole::User: roleStr = "User"; break;
+        case MessageRole::Assistant: roleStr = "Assistant"; break;
+        case MessageRole::System: roleStr = "System"; break;
+        }
+
+        // Recursively sanitize slice content fences here:
+        QString sanitizedContent = sanitizeFencesRecursive(slice.content);
+
+        // Fence length chosen automatically in sanitizer; just use 3 backticks here to open block
+        // because sanitizedContent includes fences of varying length inside already.
+        // But to be safe, let's pick an outer fence at least length 3:
+        // We can reuse sanitizeFencesRecursive to pick the correct fence length, or just hardcode 3 for outer
+
+        // Using 3 backticks as outer fence is safe here because inner fences are all length >= 3+1
+        QString outerFence(3, '`');
+
+        result += QString("### %1 (%2)\n%3markdown\n%4\n%3\n\n")
+                      .arg(roleStr)
+                      .arg(slice.timestamp)
+                      .arg(outerFence)
+                      .arg(sanitizedContent.trimmed());
+    }
+    return result;
+}
+
+
+QString Session::promoteMarkdownHeaders(const QString &md, int levelOffset)
+{
+    if (levelOffset <= 0)
+        return md;
+
+    static QRegularExpression headerRe(R"(^(\s{0,3})(#{1,6})(\s.*))", QRegularExpression::MultilineOption);
+
+    QString promoted = md;
+    int offset = 0;
+
+    auto it = headerRe.globalMatch(promoted);
+    while (it.hasNext()) {
+        auto match = it.next();
+
+        int start = match.capturedStart(2) + offset; // noqa
+        int length = match.capturedLength(2);
+
+        QString hashes = match.captured(2);
+        int currentLevel = hashes.length();
+        int newLevel = currentLevel + levelOffset;
+        if (newLevel > 6) newLevel = 6;  // max 6 '#' in markdown
+
+        QString newHashes = QString(newLevel, '#');
+
+        promoted.replace(start, length, newHashes);
+
+        offset += newHashes.length() - length;
+    }
+
+    return promoted;
 }

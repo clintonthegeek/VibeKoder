@@ -63,8 +63,8 @@ private:
     QMap<QString, QString> m_commandPipeOutputs;
 
     // Internal helper to recursively expand includes in content
-    QString expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles);
-
+    QString expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles, int headingLevelOffset);
+    QString promoteMarkdownHeaders(const QString &md, int levelOffset);
 };
 
 #endif // SESSION_H

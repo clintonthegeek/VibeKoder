@@ -167,6 +167,8 @@ void MainWindow::onSendPrompt()
     // Step 3: Compile prompt and send API request
     QString compiledPrompt = m_session->compilePrompt();
 
+    qDebug().noquote() << "=== Full prompt sent to OpenAI API ===\n" << compiledPrompt;
+
     m_openAI->setAccessToken(m_project->accessToken());
     m_openAI->setModel(m_project->model());
     m_openAI->setPrompt(compiledPrompt);
