@@ -115,6 +115,7 @@ bool Project::parseToml(const QString &content)
                 {
                     if (auto valStr = rootNode->as_string())
                         m_rootFolder = QString::fromStdString(valStr->get());
+                    qDebug() << "Project root folder is:" << m_rootFolder;
                 }
 
                 if (auto includeDocsNode = foldersTable->get("include_docs"))

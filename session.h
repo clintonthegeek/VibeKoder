@@ -4,6 +4,7 @@
 #include <QString>
 #include <QVector>
 #include <QMap>
+#include <QSet>
 
 enum class MessageRole {
     User,
@@ -13,15 +14,15 @@ enum class MessageRole {
 
 struct PromptSlice {
     MessageRole role;
-    QString content;      // Raw markdown content inside fenced block
-    QString timestamp;    // ISO8601 or simple local timestamp string
+    QString content;      // Raw markdown inside fenced block
+    QString timestamp;    // e.g., "2025-05-28 14:30:00"
 
     PromptSlice() = default;
     PromptSlice(MessageRole r, const QString& c, const QString& t)
         : role(r), content(c), timestamp(t) {}
 };
 
-class Project;
+class Project; // forward decl
 
 class Session
 {
@@ -29,34 +30,41 @@ public:
     explicit Session(Project *project = nullptr);
 
     bool load(const QString &filepath);
-    bool save(const QString &filepath);
+    bool save(const QString &filepath = QString());
 
-    QString filePath() const;
-
+    // Accessors
     QVector<PromptSlice> slices() const;
 
-    // Appends a new user prompt slice with current time
+    // Append new prompt slices with current timestamp
     void appendUserSlice(const QString &markdownContent);
     void appendAssistantSlice(const QString &markdownContent);
     void appendSystemSlice(const QString &markdownContent);
 
-    // Compiles the prompt to a single markdown string, resolving includes recursively.
-    // command pipe tokens are not expanded in Phase 1.
+    // Parse markdown session data into slices (public for your editor save slot)
+    bool parseSessionMarkdown(const QString &data);
+
+    // Compile the prompt into a single markdown string expanded with recursive includes
+    // Command pipe tokens (@diff etc.) remain as-is.
     QString compilePrompt();
 
+    // For your command pipe integration later
     void setCommandPipeOutput(const QString& key, const QString& output);
     QString commandPipeOutput(const QString& key) const;
 
-    bool parseSessionMarkdown(const QString &data);
+    QString compiledRawMarkdown() const;
+
+    static QString sanitizeFencesRecursive(const QString &markdown, int outerFenceLength = 3);
 
 private:
     QString m_filepath;
-    Project* m_project;
+    Project* m_project; // used for base folder path to resolve includes
 
     QVector<PromptSlice> m_slices;
-    QMap<QString, QString> m_commandPipeOutputs; // @diff, @make outputs...
+    QMap<QString, QString> m_commandPipeOutputs;
 
+    // Internal helper to recursively expand includes in content
     QString expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles);
+
 };
 
 #endif // SESSION_H

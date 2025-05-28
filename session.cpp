@@ -3,9 +3,8 @@
 #include <QFile>
 #include <QTextStream>
 #include <QDateTime>
-#include <QRegularExpression>
 #include <QDir>
-#include <QSet>
+#include <QRegularExpression>
 #include <QDebug>
 
 Session::Session(Project *project)
@@ -17,14 +16,14 @@ bool Session::load(const QString &filepath)
 {
     QFile file(filepath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        qWarning() << "Failed to open session file" << filepath;
+        qWarning() << "Failed to open session file:" << filepath;
         return false;
     }
 
     m_filepath = filepath;
 
     QTextStream in(&file);
-    const QString data = in.readAll();
+    QString data = in.readAll();
 
     m_slices.clear();
 
@@ -33,42 +32,22 @@ bool Session::load(const QString &filepath)
 
 bool Session::save(const QString &filepath)
 {
-    QFile file(filepath.isEmpty() ? m_filepath : filepath);
+    QString savePath = filepath.isEmpty() ? m_filepath : filepath;
+
+    QFile file(savePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qWarning() << "Failed to write session file" << filepath;
+        qWarning() << "Failed to write session file:" << savePath;
         return false;
     }
 
     QTextStream out(&file);
 
-    for (const auto &slice : m_slices) {
-        // Header with role and timestamp
-        QString roleStr;
-        switch (slice.role) {
-        case MessageRole::User: roleStr = "User"; break;
-        case MessageRole::Assistant: roleStr = "Assistant"; break;
-        case MessageRole::System: roleStr = "System"; break;
-        }
-
-        out << "### " << roleStr;
-        if (!slice.timestamp.isEmpty()) {
-            out << " (" << slice.timestamp << ")";
-        }
-        out << "\n\n";
-
-        // fenced markdown block with content
-        out << "```markdown\n";
-        out << slice.content.trimmed() << "\n";
-        out << "```\n\n";
-    }
+    // Serialize whole session with dynamic fences safely
+    out << compiledRawMarkdown();
 
     file.flush();
-    return true;
-}
 
-QString Session::filePath() const
-{
-    return m_filepath;
+    return true;
 }
 
 QVector<PromptSlice> Session::slices() const
@@ -96,42 +75,47 @@ void Session::appendSystemSlice(const QString &markdownContent)
 
 bool Session::parseSessionMarkdown(const QString &data)
 {
-    // Very simple markdown parser:
-    // For each heading ### Role(optional timestamp)
-    // followed by ```markdown fenced block
+    // Expect pattern:
+    // ### Role (optional timestamp)
+    // ```
+    // markdown fenced block follows
+    // ```
+    // Repeated.
 
-    static const QRegularExpression headerRe(R"(###\s*(User|Assistant|System)(?:\s*\((.*?)\))?\s*)");
-    static const QRegularExpression fenceRe(R"(```markdown\s*([\s\S]*?)```)");
-    // The idea: find all heading occurrences, then their fenced block following
+    static QRegularExpression headerRe(R"(###\s*(User|Assistant|System)(?:\s*\((.*?)\))?\s*)");
+    static QRegularExpression fenceRe(R"(```markdown\s*([\s\S]*?)```)", QRegularExpression::MultilineOption);
 
     int pos = 0;
     int len = data.length();
 
+    m_slices.clear();
+
     while (pos < len) {
         QRegularExpressionMatch headerMatch = headerRe.match(data, pos);
-        if (!headerMatch.hasMatch())
+        if (!headerMatch.hasMatch()) {
             break;
-
-        auto roleStr = headerMatch.captured(1);
-        auto timestamp = headerMatch.captured(2);
-        MessageRole role = MessageRole::User;
-        if (roleStr == "User") {
-            role = MessageRole::User;
-        } else if (roleStr == "Assistant") {
-            role = MessageRole::Assistant;
-        } else if (roleStr == "System") {
-            role = MessageRole::System;
         }
 
-        int fenceStart = headerMatch.capturedEnd(0);
-        QRegularExpressionMatch fenceMatch = fenceRe.match(data, fenceStart);
+        QString roleStr = headerMatch.captured(1);
+        QString timestamp = headerMatch.captured(2);
+
+        MessageRole role = MessageRole::User;
+        if (roleStr == "Assistant")
+            role = MessageRole::Assistant;
+        else if (roleStr == "System")
+            role = MessageRole::System;
+
+        int afterHeaderPos = headerMatch.capturedEnd(0);
+
+        QRegularExpressionMatch fenceMatch = fenceRe.match(data, afterHeaderPos);
 
         if (!fenceMatch.hasMatch()) {
-            qWarning() << "Session file parse error: expected fenced block after header at position" << fenceStart;
+            qWarning() << "Failed to find fenced markdown block after header at" << afterHeaderPos;
             return false;
         }
 
         QString content = fenceMatch.captured(1);
+
         m_slices.append({role, content, timestamp});
 
         pos = fenceMatch.capturedEnd(0);
@@ -142,33 +126,21 @@ bool Session::parseSessionMarkdown(const QString &data)
 
 QString Session::compilePrompt()
 {
-    // Concatenate expand includes for all User, System, and Assistant slices
-    // For now, output a simple concatenated markdown document:
-    // System messages inserted wherever they appear,
-    // Command pipes like @diff remain as-is
-
     QStringList parts;
-
-    QSet<QString> visitedIncludes;
+    QSet<QString> visitedFiles;
 
     for (const auto &slice : m_slices) {
-        // Expand includes in content recursively
-        QString expandedContent = expandIncludesRecursive(slice.content, visitedIncludes);
+        // Expand includes recursively in slice content
+        QString expanded = expandIncludesRecursive(slice.content, visitedFiles);
 
-        QString roleIntro;
+        QString intro;
         switch (slice.role) {
-        case MessageRole::System:
-            roleIntro = "[System message]\n";
-            break;
-        case MessageRole::User:
-            roleIntro = "[User prompt]\n";
-            break;
-        case MessageRole::Assistant:
-            roleIntro = "[Assistant response]\n";
-            break;
+        case MessageRole::User: intro = "[User Prompt]\n"; break;
+        case MessageRole::Assistant: intro = "[Assistant Response]\n"; break;
+        case MessageRole::System: intro = "[System Message]\n"; break;
         }
 
-        parts << roleIntro + expandedContent;
+        parts << intro + expanded;
     }
 
     return parts.join("\n\n---\n\n");
@@ -176,51 +148,57 @@ QString Session::compilePrompt()
 
 QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles)
 {
-    // Scan for <!-- include: path -->
-    // Replace with content of that file, recursively expanding includes.
-    // Relative paths interpreted relative to project root folder.
+    // Looks for <!-- include: path --> markers and includes contents recursively.
+    // Paths relative to project root folder.
 
-    static const QRegularExpression includeRe(R"(<!--\s*include:\s*(.+?)\s*-->)");
+    static QRegularExpression includeRe(R"(<!--\s*include:\s*(.*?)\s*-->)");
 
     QString result = content;
 
-    auto projectRoot = (m_project ? m_project->rootFolder() : QString());
-    if (projectRoot.isEmpty())
-        projectRoot = QDir::currentPath();
+    if (!m_project) {
+        qWarning() << "No project associated with session, cannot resolve includes";
+        return result;
+    }
+
+    QString rootFolder = m_project->rootFolder();
+    if (rootFolder.isEmpty())
+        rootFolder = QDir::currentPath();
 
     int offset = 0;
-    QRegularExpressionMatch match;
-    while ((match = includeRe.match(result, offset)).hasMatch()) {
-        QString includePath = match.captured(1);
-        QString absPath = QDir(projectRoot).filePath(includePath);
+    while (true) {
+        QRegularExpressionMatch m = includeRe.match(result, offset);
+        if (!m.hasMatch())
+            break;
 
-        // To avoid circular includes:
+        QString includePath = m.captured(1).trimmed();
+        QString absPath = QDir(rootFolder).filePath(includePath);
+
         if (visitedFiles.contains(absPath)) {
-            qWarning() << "Circular include detected: " << absPath;
-            offset = match.capturedEnd(0);
-            continue; // skip expanding this include again
+            qWarning() << "Circular include detected:" << absPath;
+            offset = m.capturedEnd(0);
+            continue; // skip to avoid infinite loop
         }
 
         visitedFiles.insert(absPath);
 
-        QString replacement;
+        QString includedContent;
         QFile incFile(absPath);
         if (incFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            replacement = incFile.readAll();
+            includedContent = incFile.readAll();
             incFile.close();
 
-            // Recursive expansion of includes in this file's content
-            replacement = expandIncludesRecursive(replacement, visitedFiles);
+            // Recursive expansion in included content
+            includedContent = expandIncludesRecursive(includedContent, visitedFiles);
         } else {
-            replacement = QString("[Could not include file: %1]").arg(absPath);
+            includedContent = QString("[Could not include file: %1]").arg(absPath);
         }
 
-        // Replace the include marker with the file content (recursive)
-        int start = match.capturedStart(0);
-        int end = match.capturedEnd(0);
-        result.replace(start, end - start, replacement);
+        int start = m.capturedStart(0);
+        int length = m.capturedLength(0);
 
-        offset = start + replacement.length();
+        result.replace(start, length, includedContent);
+
+        offset = start + includedContent.length();
 
         visitedFiles.remove(absPath);
     }
@@ -236,4 +214,176 @@ void Session::setCommandPipeOutput(const QString &key, const QString &output)
 QString Session::commandPipeOutput(const QString &key) const
 {
     return m_commandPipeOutputs.value(key, QString());
+}
+
+
+
+// Find maximum continuous backtick sequence in the entire text
+static int maxBacktickRun(const QString &text)
+{
+    static QRegularExpression regex(R"(`+)");
+    QRegularExpressionMatchIterator i = regex.globalMatch(text);
+
+    int maxRun = 0;
+    while (i.hasNext()) {
+        auto match = i.next();
+        int length = match.capturedLength();
+        if (length > maxRun)
+            maxRun = length;
+    }
+    return maxRun;
+}
+
+// Replace any inner fences of length >= minFenceLength with fences at least one longer.
+// This avoids conflicts with our outer fence.
+static QString sanitizeInnerFences(const QString &content, int minFenceLength)
+{
+    QString sanitized = content;
+
+    // Regex to find fenced blocks: fences of backticks ```...```
+    // We focus on fences with length >= minFenceLength - 1 to replace them.
+    // This is a heuristic — complicated nested markdown is hard to parse perfectly.
+
+    // Pattern matches fences with >= 3 backticks:
+    static QRegularExpression fenceRe(R"((`{3,})(.*?)(`{3,}))", QRegularExpression::DotMatchesEverythingOption);
+
+    int pos = 0;
+    while (true) {
+        QRegularExpressionMatch m = fenceRe.match(sanitized, pos);
+        if (!m.hasMatch())
+            break;
+
+        QString fenceStart = m.captured(1);
+        QString fenceEnd = m.captured(3);
+
+        int fenceLen = fenceStart.length();
+
+        if (fenceLen >= minFenceLength) {
+            // Bump fence length by 1 to avoid conflict with outer fence
+            int newFenceLen = fenceLen + 1;
+            QString newFence = QString(newFenceLen, '`');
+
+            // Replace start and end fences in the match with newFence of longer length
+            int startPos = m.capturedStart(1);
+            int endPos = m.capturedStart(3);
+
+            sanitized.replace(endPos, fenceLen, newFence);
+            sanitized.replace(startPos, fenceLen, newFence);
+
+            // Move pos forward to avoid infinite loop on same match:
+            pos = endPos + newFenceLen;
+        } else {
+            // Fence is shorter, safe to skip
+            pos = m.capturedEnd(0);
+        }
+    }
+
+    return sanitized;
+}
+
+
+QString Session::compiledRawMarkdown() const
+{
+    QString result;
+    for (const auto &slice : m_slices) {
+        QString roleStr;
+        switch (slice.role) {
+        case MessageRole::User: roleStr = "User"; break;
+        case MessageRole::Assistant: roleStr = "Assistant"; break;
+        case MessageRole::System: roleStr = "System"; break;
+        }
+
+        // Recursively sanitize slice content fences here:
+        QString sanitizedContent = sanitizeFencesRecursive(slice.content);
+
+        // Fence length chosen automatically in sanitizer; just use 3 backticks here to open block
+        // because sanitizedContent includes fences of varying length inside already.
+        // But to be safe, let's pick an outer fence at least length 3:
+        // We can reuse sanitizeFencesRecursive to pick the correct fence length, or just hardcode 3 for outer
+
+        // Using 3 backticks as outer fence is safe here because inner fences are all length >= 3+1
+        QString outerFence(3, '`');
+
+        result += QString("### %1 (%2)\n%3markdown\n%4\n%3\n\n")
+                      .arg(roleStr)
+                      .arg(slice.timestamp)
+                      .arg(outerFence)
+                      .arg(sanitizedContent.trimmed());
+    }
+    return result;
+}
+
+
+QString Session::sanitizeFencesRecursive(const QString &markdown, int outerFenceLength)
+{
+    QString result = markdown;
+
+    // Normalize line endings for consistent matching
+    result.replace("\r\n", "\n").replace("\r", "\n");
+
+    // Regex to match fenced code blocks:
+    // 1: fence chars (``` or ~~~), 2: language tag (optional),
+    // 3: fenced content, then closing fence equal to opening
+    static const QRegularExpression fenceRe(
+        R"(^([`~]{3,})[ \t]*([a-zA-Z0-9_.+-]*)[ \t]*\n([\s\S]*?)\n\1[ \t]*$)",
+        QRegularExpression::MultilineOption | QRegularExpression::CaseInsensitiveOption);
+
+    int offset = 0;
+
+    while (true)
+    {
+        QRegularExpressionMatch match = fenceRe.match(result, offset);
+        if (!match.hasMatch())
+            break;
+
+        int start = match.capturedStart(0);
+        int length = match.capturedLength(0);
+
+        int fenceLen = match.captured(1).length();
+        QChar fenceChar = match.captured(1)[0];
+        QString lang = match.captured(2).trimmed();
+        QString innerContent = match.captured(3);
+
+        qDebug() << "Sanitize fences at offset" << offset
+                 << "| outerFenceLength:" << outerFenceLength
+                 << "| fenceLen:" << fenceLen
+                 << "| fenceChar:" << fenceChar
+                 << "| lang:[" << lang << "]";
+
+        // Recurse with strictly incremented fence length to ensure nesting
+        QString sanitizedInner = sanitizeFencesRecursive(innerContent, outerFenceLength + 1);
+
+        // Current block fence length must be outerFenceLength (strictly increasing)
+        int newFenceLen = outerFenceLength;
+        QString newFence(newFenceLen, fenceChar);
+
+        // Build replacement fenced block string
+        QString replacement = QString("%1%2\n%3\n%1\n")
+                                  .arg(newFence)
+                                  .arg(lang)
+                                  .arg(sanitizedInner);
+
+        QString originalBlock = result.mid(start, length);
+
+        if (originalBlock == replacement) {
+            // No change; advance offset to avoid infinite loop
+            qDebug() << "No replacement needed, advancing offset from" << offset << "to" << (start + length);
+            offset = start + length;
+            continue;
+        }
+
+        // Replace fenced block in result string with sanitized version
+        result.replace(start, length, replacement);
+
+        // Set offset to just after replacement to continue scanning
+        offset = start + replacement.length();
+
+        qDebug() << "Replaced fences at" << start << "length" << length << "new offset" << offset
+                 << "sanitized length" << result.length();
+    }
+
+    qDebug() << "Sanitize recursion complete at fence length" << outerFenceLength
+             << "final length" << result.length();
+
+    return result;
 }

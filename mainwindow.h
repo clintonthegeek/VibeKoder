@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include <qplaintextedit.h>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -37,6 +38,7 @@ private:
     OpenAIRequest *m_openAI = nullptr;
 
     void clearSession();
+    void moveCursorToUserPrompt(QPlainTextEdit *editor);
 };
 
 #endif // MAINWINDOW_H
