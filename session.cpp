@@ -7,6 +7,8 @@
 #include <QRegularExpression>
 #include <QDebug>
 
+
+
 Session::Session(Project *project)
     : m_project(project)
 {
@@ -82,7 +84,7 @@ bool Session::parseSessionMarkdown(const QString &data)
     // ```
     // Repeated.
 
-    static QRegularExpression headerRe(R"(###\s*(User|Assistant|System)(?:\s*\((.*?)\))?\s*)");
+    static QRegularExpression headerRe(R"(#\s*(User|Assistant|System)(?:\s*\((.*?)\))?\s*)");
     static QRegularExpression fenceRe(R"(```markdown\s*([\s\S]*?)```)", QRegularExpression::MultilineOption);
 
     int pos = 0;
@@ -130,7 +132,8 @@ QString Session::compilePrompt()
     QSet<QString> visitedFiles;
 
     for (const auto &slice : m_slices) {
-        // Expand includes recursively in slice content
+        // Pass headingLevelOffset = 1 because prompt slices are now level 1 headers (# User etc).
+        // Included files inside slices are promoted starting at level 2.
         QString expanded = expandIncludesRecursive(slice.content, visitedFiles, 0);
 
         QString intro;
@@ -146,15 +149,86 @@ QString Session::compilePrompt()
     return parts.join("\n\n---\n\n");
 }
 
-QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles, int headingLevelOffset)
+#include <QRegularExpression>
+#include <QFile>
+#include <QDir>
+#include <QDebug>
+
+// Promote all markdown headers by a given level (caps at 6)
+QString Session::promoteMarkdownHeaders(const QString &md, int promoteBy)
 {
-    static QRegularExpression includeRe(R"(<!--\s*include:\s*(.*?)\s*-->)");
+    qDebug() << "promoteMarkdownHeaders called with promoteBy =" << promoteBy
+             << "input length =" << md.length();
+    if (promoteBy <= 0) return md;
+
+    static const QRegularExpression headerRe(R"(^(\s{0,3})(#{1,6})(\s.*)$)", QRegularExpression::MultilineOption);
+
+    QString promoted = md;
+    int offset = 0;
+
+    auto matchIt = headerRe.globalMatch(md);
+    while (matchIt.hasNext()) {
+        QRegularExpressionMatch match = matchIt.next();
+        int start = match.capturedStart(2) + offset;
+        int length = match.capturedLength(2);
+
+        QString hashes = match.captured(2);
+        int currentLevel = hashes.length();
+        int newLevel = currentLevel + promoteBy;
+        if (newLevel > 6) newLevel = 6;
+
+        qDebug() << "Promoting header from level" << currentLevel << "to level" << newLevel;
+
+        QString newHashes = QString(newLevel, '#');
+
+        promoted.replace(start, length, newHashes);
+
+        offset += newHashes.length() - length;
+    }
+
+    return promoted;
+}
+
+// Find the heading level just before 'includePos' in 'text'
+// Returns 0 if no heading found (treated as document root)
+int Session::findEnclosingHeaderLevel(const QString &text, int includePos)
+{
+    static const QRegularExpression headerRe(R"(^\s{0,3}(#{1,6})\s+.+$)", QRegularExpression::MultilineOption);
+
+    QString precedingText = text.left(includePos);
+
+    QList<QRegularExpressionMatch> matches;
+
+    auto it = headerRe.globalMatch(precedingText);
+    while (it.hasNext())
+        matches.append(it.next());
+
+    if (matches.isEmpty())
+        return 0; // No header found before include
+
+    QRegularExpressionMatch lastHeader = matches.last();
+
+    return lastHeader.captured(1).length();
+}
+
+// Recursive include expansion with heading level context
+QString Session::expandIncludesRecursive(const QString &content,
+                                         QSet<QString> &visitedFiles,
+                                         int parentHeaderLevel)
+{
+    static const QRegularExpression includeRe(R"(<!--\s*include:\s*(.*?)\s*-->)");
+
+    qDebug() << "expandIncludesRecursive called with parentHeaderLevel =" << parentHeaderLevel
+             << ", visitedFiles size =" << visitedFiles.size();
 
     QString result = content;
 
     if (!m_project) {
-        qWarning() << "No project associated with session; includes cannot resolve";
-        return promoteMarkdownHeaders(result, headingLevelOffset);
+        qWarning() << "No project assigned to session; cannot resolve includes";
+        // Promote current block headers based on parentHeaderLevel and return
+        QString promotedResult = promoteMarkdownHeaders(result, parentHeaderLevel);
+        qDebug() << "No project: after promotion headers length =" << promotedResult.length();
+        return promotedResult;
     }
 
     QString rootFolder = m_project->rootFolder();
@@ -163,12 +237,14 @@ QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &
 
     int offset = 0;
     while (true) {
-        auto m = includeRe.match(result, offset);
+        QRegularExpressionMatch m = includeRe.match(result, offset);
         if (!m.hasMatch())
             break;
 
         QString includePath = m.captured(1).trimmed();
         QString absPath = QDir(rootFolder).filePath(includePath);
+
+        qDebug() << "Include found:" << includePath << "resolved to" << absPath;
 
         if (visitedFiles.contains(absPath)) {
             qWarning() << "Circular include detected:" << absPath;
@@ -178,34 +254,52 @@ QString Session::expandIncludesRecursive(const QString &content, QSet<QString> &
 
         visitedFiles.insert(absPath);
 
+        int includePos = m.capturedStart(0);
+
+        // Find the header level enclosing the include marker within current content
+        int enclosingLevel = findEnclosingHeaderLevel(result, includePos);
+        if (enclosingLevel == 0) {
+            enclosingLevel = parentHeaderLevel; // fallback to passed header level
+        }
+
+        qDebug() << "Enclosing header level at include position:" << enclosingLevel;
+
         QString includedContent;
         QFile incFile(absPath);
         if (incFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
             includedContent = incFile.readAll();
             incFile.close();
 
-            // Recursively expand includes with increased heading offset
-            includedContent = expandIncludesRecursive(includedContent, visitedFiles, headingLevelOffset + 1);
+            // Recursively expand includes inside the included content, increasing header level +1
+            includedContent = expandIncludesRecursiveWithoutPromotion(includedContent, visitedFiles, enclosingLevel + 1);
+            // Promote headers in the included content ONLY ONCE here accordingly
+            includedContent = promoteMarkdownHeaders(includedContent, enclosingLevel + 1);
 
-            // Promote the included markdown headers by headingLevelOffset + 1 (or your policy)
-            includedContent = promoteMarkdownHeaders(includedContent, headingLevelOffset + 1);
+            qDebug() << "Included content after recursive expansion and promotion, length =" << includedContent.length();
 
         } else {
             includedContent = QString("[Could not include file: %1]").arg(absPath);
+            qWarning() << "Failed to open include file:" << absPath;
         }
 
         int start = m.capturedStart(0);
         int length = m.capturedLength(0);
 
+        // Replace include marker with expanded and promoted included content
         result.replace(start, length, includedContent);
 
         offset = start + includedContent.length();
 
         visitedFiles.remove(absPath);
+        qDebug() << "Include replaced at position" << start << ", new offset =" << offset;
     }
 
-    // Finally, promote headers in the current block as well
-    return promoteMarkdownHeaders(result, headingLevelOffset);
+    // Finally, promote headers in the current block only based on parentHeaderLevel
+    QString finalResult = promoteMarkdownHeaders(result, parentHeaderLevel);
+    qDebug() << "Final promotion with parentHeaderLevel =" << parentHeaderLevel
+             << ", result length =" << finalResult.length();
+
+    return finalResult;
 }
 
 void Session::setCommandPipeOutput(const QString &key, const QString &output)
@@ -358,8 +452,6 @@ QString Session::sanitizeFencesRecursive(const QString &markdown, int outerFence
     return result;
 }
 
-
-
 QString Session::compiledRawMarkdown() const
 {
     QString result;
@@ -371,55 +463,110 @@ QString Session::compiledRawMarkdown() const
         case MessageRole::System: roleStr = "System"; break;
         }
 
-        // Recursively sanitize slice content fences here:
+        // Sanitize fences recursively as you already have implemented
         QString sanitizedContent = sanitizeFencesRecursive(slice.content);
 
-        // Fence length chosen automatically in sanitizer; just use 3 backticks here to open block
-        // because sanitizedContent includes fences of varying length inside already.
-        // But to be safe, let's pick an outer fence at least length 3:
-        // We can reuse sanitizeFencesRecursive to pick the correct fence length, or just hardcode 3 for outer
+        // Compose top-level heading for slice role + timestamp
+        QString header = QString("# %1").arg(roleStr);
+        if (!slice.timestamp.isEmpty()) {
+            header += QString(" (%1)").arg(slice.timestamp);
+        }
 
-        // Using 3 backticks as outer fence is safe here because inner fences are all length >= 3+1
-        QString outerFence(3, '`');
+        // Use fixed 3-backtick fenced block (assuming sanitizeFencesRecursive ensures inner fences longer than 3)
+        const QString outerFence = "```";
 
-        result += QString("### %1 (%2)\n%3markdown\n%4\n%3\n\n")
-                      .arg(roleStr)
-                      .arg(slice.timestamp)
+        result += QString("%1\n%2markdown\n%3\n%2\n\n")
+                      .arg(header)
                       .arg(outerFence)
                       .arg(sanitizedContent.trimmed());
     }
+
     return result;
 }
 
-
-QString Session::promoteMarkdownHeaders(const QString &md, int levelOffset)
+QString Session::expandIncludesRecursiveWithoutPromotion(const QString &content,
+                                                         QSet<QString> &visitedFiles,
+                                                         int parentHeaderLevel)
 {
-    if (levelOffset <= 0)
-        return md;
+    static const QRegularExpression includeRe(R"(<!--\s*include:\s*(.*?)\s*-->)");
 
-    static QRegularExpression headerRe(R"(^(\s{0,3})(#{1,6})(\s.*))", QRegularExpression::MultilineOption);
 
-    QString promoted = md;
-    int offset = 0;
+    qDebug() << "expandIncludesRecursiveWithoutPromotion called with parentHeaderLevel ="
+             << parentHeaderLevel << ", visitedFiles size =" << visitedFiles.size();
 
-    auto it = headerRe.globalMatch(promoted);
-    while (it.hasNext()) {
-        auto match = it.next();
+    QString result = content;
 
-        int start = match.capturedStart(2) + offset; // noqa
-        int length = match.capturedLength(2);
-
-        QString hashes = match.captured(2);
-        int currentLevel = hashes.length();
-        int newLevel = currentLevel + levelOffset;
-        if (newLevel > 6) newLevel = 6;  // max 6 '#' in markdown
-
-        QString newHashes = QString(newLevel, '#');
-
-        promoted.replace(start, length, newHashes);
-
-        offset += newHashes.length() - length;
+    if (!m_project) {
+        qWarning() << "No project assigned to session; cannot resolve includes";
+        // Return content as-is; no promotion here (caller responsible)
+        return result;
     }
 
-    return promoted;
+    QString rootFolder = m_project->rootFolder();
+    if (rootFolder.isEmpty())
+        rootFolder = QDir::currentPath();
+
+    int offset = 0;
+    while (true) {
+        QRegularExpressionMatch m = includeRe.match(result, offset);
+        if (!m.hasMatch())
+            break;
+
+        QString includePath = m.captured(1).trimmed();
+        QString absPath = QDir(rootFolder).filePath(includePath);
+
+        qDebug() << "Include found:" << includePath << "resolved to" << absPath;
+
+        if (visitedFiles.contains(absPath)) {
+            qWarning() << "Circular include detected:" << absPath;
+            offset = m.capturedEnd(0);
+            continue;
+        }
+
+        visitedFiles.insert(absPath);
+
+        int includePos = m.capturedStart(0);
+
+        // Find the header level enclosing the include marker within current content
+        int enclosingLevel = findEnclosingHeaderLevel(result, includePos);
+        if (enclosingLevel == 0) {
+            enclosingLevel = parentHeaderLevel; // fallback to passed header level
+        }
+
+        qDebug() << "Enclosing header level at include position:" << enclosingLevel;
+
+        QString includedContent;
+        QFile incFile(absPath);
+        if (incFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            includedContent = incFile.readAll();
+            incFile.close();
+
+            // Recursive expand includes inside the included content, without promotion
+            includedContent = expandIncludesRecursiveWithoutPromotion(includedContent, visitedFiles, enclosingLevel + 1);
+
+            // **Do NOT promote headers here**
+            // Leave header promotion to the caller after recursion returns
+
+            qDebug() << "Included content after recursive expansion (no promotion) length =" << includedContent.length();
+
+        } else {
+            includedContent = QString("[Could not include file: %1]").arg(absPath);
+            qWarning() << "Failed to open include file:" << absPath;
+        }
+
+        int start = m.capturedStart(0);
+        int length = m.capturedLength(0);
+
+        // Replace include marker with expanded included content (no promoted headers yet)
+        result.replace(start, length, includedContent);
+
+        offset = start + includedContent.length();
+
+        visitedFiles.remove(absPath);
+        qDebug() << "Include replaced at position" << start << ", new offset =" << offset;
+    }
+
+    // **DO NOT promote headers here**; caller handles promotion after recursion
+
+    return result;
 }

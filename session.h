@@ -63,7 +63,19 @@ private:
     QMap<QString, QString> m_commandPipeOutputs;
 
     // Internal helper to recursively expand includes in content
-    QString expandIncludesRecursive(const QString &content, QSet<QString> &visitedFiles, int headingLevelOffset);
+    // Updated expandIncludesRecursive with additional parameter for header level context
+    QString expandIncludesRecursive(const QString &content,
+                                    QSet<QString> &visitedFiles,
+                                    int parentHeaderLevel = 0);
+
+    QString expandIncludesRecursiveWithoutPromotion(const QString &content,
+                                                    QSet<QString> &visitedFiles,
+                                                    int parentHeaderLevel);
+
+    // Helper to find enclosing header level before an include marker
+    int findEnclosingHeaderLevel(const QString &text, int includePos);
+
+    // Promote markdown headers by specified levels (caps at 6)
     QString promoteMarkdownHeaders(const QString &md, int levelOffset);
 };
 

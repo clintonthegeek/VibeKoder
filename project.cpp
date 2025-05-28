@@ -1,13 +1,22 @@
 #include "project.h"
+
 #include <QFile>
+#include <QDir>
+#include <QFileInfo>
 #include <QDebug>
+#include <QDirIterator>
+
 #include "toml.hpp"
 
-// Use fully qualified experimental namespace to be explicit:
-namespace tomlex = toml::v3::ex;
-
 Project::Project()
-    : m_maxTokens(1000)
+    : m_rootFolder()
+    , m_docsFolder()
+    , m_srcFolder()
+    , m_sessionsFolder()
+    , m_templatesFolder()
+    , m_accessToken()
+    , m_model("gpt-4.1-mini")
+    , m_maxTokens(800)
     , m_temperature(0.3)
     , m_topP(1.0)
     , m_frequencyPenalty(0.0)
@@ -15,221 +24,234 @@ Project::Project()
 {
 }
 
-
 bool Project::load(const QString &filepath)
 {
-    m_rawTomlPath = filepath;
     QFile file(filepath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qWarning() << "Could not open project file:" << filepath;
         return false;
     }
 
-    QTextStream in(&file);
-    QString content = in.readAll();
+    m_projectFilePath = filepath;
 
-    return parseToml(content);
+    const QString content = QString::fromUtf8(file.readAll());
+
+    bool ok = parseToml(content, filepath);
+    if (ok)
+        qDebug() << "Project loaded with root folder:" << m_rootFolder;
+    return ok;
 }
 
-bool Project::save(const QString &filepath)
+bool Project::save(const QString & /*filepath*/)
 {
-    // For phase 1, saving not needed; stub
+    // Save not implemented yet
     return false;
 }
 
-
-bool Project::parseToml(const QString &content)
+bool Project::parseToml(const QString &content, const QString &projectFilePath)
 {
-    try
-    {
-        // Experimental API: parse returns table directly (not parse_result)
-        toml::table root = tomlex::parse(content.toStdString());
+    try {
+        toml::table root = toml::parse(content.toStdString());
 
-        // No failed() or error(): consider empty table as parse failure
-        if (root.empty())
-        {
-            qWarning() << "TOML parse failed: empty or invalid document";
-            return false;
-        }
-
-        // [api]
-        if (auto apiNode = root.get("api"))
-        {
-            if (auto apiTable = apiNode->as_table())
-            {
-                if (auto tokenNode = apiTable->get("access_token"))
-                {
-                    // In experimental: value<T>() returns raw T, so use as_string()
-                    if (auto valStr = tokenNode->as_string())
-                        m_accessToken = QString::fromStdString(valStr->get());
-                }
-
-                if (auto modelNode = apiTable->get("model"))
-                {
-                    if (auto valStr = modelNode->as_string())
-                        m_model = QString::fromStdString(valStr->get());
-                }
-                else
-                {
-                    m_model = "gpt-4";
-                }
-
-                if (auto maxTokensNode = apiTable->get("max_tokens"))
-                {
-                    if (auto valInt = maxTokensNode->as_integer())
-                        m_maxTokens = static_cast<int>(valInt->get());
-                }
-
-                if (auto tempNode = apiTable->get("temperature"))
-                {
-                    if (auto valDouble = tempNode->as_floating_point())
-                        m_temperature = valDouble->get();
-                }
-
-                if (auto topPNode = apiTable->get("top_p"))
-                {
-                    if (auto valDouble = topPNode->as_floating_point())
-                        m_topP = valDouble->get();
-                }
-
-                if (auto freqNode = apiTable->get("frequency_penalty"))
-                {
-                    if (auto valDouble = freqNode->as_floating_point())
-                        m_frequencyPenalty = valDouble->get();
-                }
-
-                if (auto presNode = apiTable->get("presence_penalty"))
-                {
-                    if (auto valDouble = presNode->as_floating_point())
-                        m_presencePenalty = valDouble->get();
-                }
-            }
-        }
-
-        // [folders]
-        if (auto foldersNode = root.get("folders"))
-        {
-            if (auto foldersTable = foldersNode->as_table())
-            {
-                if (auto rootNode = foldersTable->get("root"))
-                {
-                    if (auto valStr = rootNode->as_string())
-                        m_rootFolder = QString::fromStdString(valStr->get());
-                    qDebug() << "Project root folder is:" << m_rootFolder;
-                }
-
-                if (auto includeDocsNode = foldersTable->get("include_docs"))
-                {
-                    m_includeDocs.clear();
-                    if (includeDocsNode->is_array())
-                    {
-                        for (const auto& el : *includeDocsNode->as_array())
-                        {
-                            if (auto valStr = el.as_string())
-                                m_includeDocs << QString::fromStdString(valStr->get());
+        // **** Determine m_rootFolder ****
+        // If [folders] root="." then set root as folder containing the project file
+        if (auto foldersNode = root.get("folders")) {
+            if (auto foldersTable = foldersNode->as_table()) {
+                if (auto rootNode = foldersTable->get("root")) {
+                    if (auto valStr = rootNode->as_string()) {
+                        QString rootPath = QString::fromStdString(valStr->get()).trimmed();
+                        if (rootPath == ".") {
+                            QFileInfo fi(projectFilePath);
+                            m_rootFolder = fi.absolutePath();
+                        } else {
+                            m_rootFolder = QDir::cleanPath(QDir(m_rootFolder).filePath(rootPath));
                         }
                     }
-                    else if (auto valStr = includeDocsNode->as_string())
-                    {
-                        m_includeDocs << QString::fromStdString(valStr->get());
-                    }
+                } else {
+                    // Default root folder - directory of project file
+                    QFileInfo fi(projectFilePath);
+                    m_rootFolder = fi.absolutePath();
                 }
 
-                if (auto srcNode = foldersTable->get("src"))
-                {
-                    m_sourceFolders.clear();
-                    if (srcNode->is_array())
-                    {
-                        for (const auto& el : *srcNode->as_array())
-                        {
-                            if (auto valStr = el.as_string())
-                                m_sourceFolders << QString::fromStdString(valStr->get());
+                // Parse subfolders relative to root
+                auto getSubfolder = [&](const char* name, QString &memberVar) {
+                    if (auto node = foldersTable->get(name)) {
+                        if (auto strVal = node->as_string()) {
+                            memberVar = QDir(m_rootFolder).filePath(QString::fromStdString(strVal->get()).trimmed());
                         }
                     }
-                    else if (auto valStr = srcNode->as_string())
-                    {
-                        m_sourceFolders << QString::fromStdString(valStr->get());
+                };
+                getSubfolder("docs", m_docsFolder);
+                getSubfolder("src", m_srcFolder);
+                getSubfolder("sessions", m_sessionsFolder);
+                getSubfolder("templates", m_templatesFolder);
+
+                // include_docs as array or single string with ~ expansion
+                if (auto inclNode = foldersTable->get("include_docs")) {
+                    m_includeDocFolders.clear();
+                    if (inclNode->is_array()) {
+                        for (const auto& el : *inclNode->as_array()) {
+                            if (auto strVal = el.as_string()) {
+                                QString folder = QString::fromStdString(strVal->get()).trimmed();
+                                if (folder.startsWith("~")) {
+                                    folder.replace(0, 1, QDir::homePath());
+                                }
+                                if (QDir::isAbsolutePath(folder))
+                                    m_includeDocFolders.append(QDir::cleanPath(folder));
+                                else
+                                    m_includeDocFolders.append(QDir(m_rootFolder).filePath(folder));
+                            }
+                        }
+                    } else if (auto strVal = inclNode->as_string()) {
+                        QString folder = QString::fromStdString(strVal->get()).trimmed();
+                        if (folder.startsWith("~")) {
+                            folder.replace(0, 1, QDir::homePath());
+                        }
+                        if (QDir::isAbsolutePath(folder))
+                            m_includeDocFolders.append(QDir::cleanPath(folder));
+                        else
+                            m_includeDocFolders.append(QDir(m_rootFolder).filePath(folder));
                     }
                 }
             }
         }
 
-        // [filetypes]
-        if (auto ftNode = root.get("filetypes"))
-        {
-            if (auto ftTable = ftNode->as_table())
-            {
-                if (auto sourceNode = ftTable->get("source"))
-                {
-                    m_sourceFileTypes.clear();
-                    if (sourceNode->is_array())
-                    {
-                        for (const auto& el : *sourceNode->as_array())
-                        {
-                            if (auto valStr = el.as_string())
-                                m_sourceFileTypes << QString::fromStdString(valStr->get());
+        // **** Filetypes ****
+        if (auto ftNode = root.get("filetypes")) {
+            if (auto ftTable = ftNode->as_table()) {
+                auto readStrList = [](const toml::node* node) -> QStringList {
+                    QStringList list;
+                    if (!node) return list;
+                    if (node->is_array()) {
+                        for (const auto& el : *node->as_array()) {
+                            if (auto strVal = el.as_string()) {
+                                list.append(QString::fromStdString(strVal->get()));
+                            }
                         }
+                    } else if (auto strVal = node->as_string()) {
+                        list.append(QString::fromStdString(strVal->get()));
                     }
-                    else if (auto valStr = sourceNode->as_string())
-                    {
-                        m_sourceFileTypes << QString::fromStdString(valStr->get());
-                    }
-                }
-                if (auto docsNode = ftTable->get("docs"))
-                {
-                    m_docFileTypes.clear();
-                    if (docsNode->is_array())
-                    {
-                        for (const auto& el : *docsNode->as_array())
-                        {
-                            if (auto valStr = el.as_string())
-                                m_docFileTypes << QString::fromStdString(valStr->get());
-                        }
-                    }
-                    else if (auto valStr = docsNode->as_string())
-                    {
-                        m_docFileTypes << QString::fromStdString(valStr->get());
-                    }
-                }
+                    return list;
+                };
+
+                m_sourceFileTypes = readStrList(ftTable->get("source"));
+                m_docFileTypes = readStrList(ftTable->get("docs"));
             }
         }
 
-        // [command_pipes]
-        if (auto cmdNode = root.get("command_pipes"))
-        {
-            if (auto cmdTable = cmdNode->as_table())
-            {
+        // **** Command Pipes ****
+        if (auto cmdNode = root.get("command_pipes")) {
+            if (auto cmdTable = cmdNode->as_table()) {
                 m_commandPipes.clear();
-                for (const auto& [keyObj, valNode] : *cmdTable)
-                {
-                    const std::string keyStr{ keyObj.str() }; // explicit conversion from string_view to string
-
-                    if (auto valStr = valNode.as_string())
-                    {
-                        m_commandPipes.insert(
-                            QString::fromStdString(keyStr),
-                            QString::fromStdString(valStr->get())
-                            );
+                for (const auto& [keyObj, valNode] : *cmdTable) {
+                    QString key = QString::fromStdString(std::string(keyObj.str()));
+                    QStringList cmdList;
+                    if (auto arrPtr = valNode.as_array()) {
+                        for (const auto& el : *arrPtr) {
+                            if (auto strVal = el.as_string()) {
+                                cmdList << QString::fromStdString(strVal->get());
+                            }
+                        }
+                    } else if (auto strVal = valNode.as_string()) {
+                        cmdList << QString::fromStdString(strVal->get());
                     }
+                    m_commandPipes.insert(key, cmdList);
                 }
+            }
+        }
+
+        // **** API section ****
+        if (auto apiNode = root.get("api")) {
+            if (auto apiTable = apiNode->as_table()) {
+                auto readStr = [&](const char* name) -> QString {
+                    if (auto node = apiTable->get(name)) {
+                        if (auto strVal = node->as_string())
+                            return QString::fromStdString(strVal->get());
+                    }
+                    return QString();
+                };
+
+                m_accessToken = readStr("access_token");
+                m_model = readStr("model");
+                if (m_model.isEmpty())
+                    m_model = "gpt-4.1-mini";
+
+                auto readInt = [&](const char* name, int def) {
+                    if (auto node = apiTable->get(name)) {
+                        if (auto intVal = node->as_integer())
+                            return static_cast<int>(intVal->get());
+                    }
+                    return def;
+                };
+
+                m_maxTokens = readInt("max_tokens", 800);
+
+                auto readDouble = [&](const char* name, double def) {
+                    if (auto node = apiTable->get(name)) {
+                        if (auto dblVal = node->as_floating_point())
+                            return dblVal->get();
+                    }
+                    return def;
+                };
+
+                m_temperature = readDouble("temperature", 0.3);
+                m_topP = readDouble("top_p", 1.0);
+                m_frequencyPenalty = readDouble("frequency_penalty", 0.0);
+                m_presencePenalty = readDouble("presence_penalty", 0.0);
             }
         }
 
         return true;
-    }
-    catch (const std::exception &ex)
-    {
-        qWarning() << "Exception while parsing TOML:" << ex.what();
-        return false;
-    }
-    catch (...)
-    {
-        qWarning() << "Unknown error while parsing TOML";
+    } catch (const std::exception& ex) {
+        qWarning() << "Exception during TOML parse:" << ex.what();
         return false;
     }
 }
 
-// Getters
+// Expand doc files in all includeDocFolders recursively and return matched file paths
+QStringList Project::scanDocsRecursive() const
+{
+    QStringList results;
+    for (const QString &folder : qAsConst(m_includeDocFolders)) {
+        QDir dir(folder);
+        if (!dir.exists())
+            continue;
+
+        // Recursive directory iterator
+        QDirIterator it(dir.absolutePath(), m_docFileTypes, QDir::Files, QDirIterator::Subdirectories);
+        while (it.hasNext()) {
+            results << it.next();
+        }
+    }
+    return results;
+}
+
+// Expand source files recursively in m_srcFolder and return matched file paths
+QStringList Project::scanSourceRecursive() const
+{
+    QStringList results;
+    QDir dir(m_srcFolder);
+    if (!dir.exists())
+        return results;
+
+    QDirIterator it(dir.absolutePath(), m_sourceFileTypes, QDir::Files, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        results << it.next();
+    }
+    return results;
+}
+
+// Getters for folders and filetypes
+QString Project::rootFolder() const { return m_rootFolder; }
+QString Project::docsFolder() const { return m_docsFolder; }
+QString Project::srcFolder() const { return m_srcFolder; }
+QString Project::sessionsFolder() const { return m_sessionsFolder; }
+QString Project::templatesFolder() const { return m_templatesFolder; }
+QStringList Project::includeDocFolders() const { return m_includeDocFolders; }
+
+QStringList Project::sourceFileTypes() const { return m_sourceFileTypes; }
+QStringList Project::docFileTypes() const { return m_docFileTypes; }
+QMap<QString, QStringList> Project::commandPipes() const { return m_commandPipes; }
 
 QString Project::accessToken() const { return m_accessToken; }
 QString Project::model() const { return m_model; }
@@ -238,10 +260,3 @@ double Project::temperature() const { return m_temperature; }
 double Project::topP() const { return m_topP; }
 double Project::frequencyPenalty() const { return m_frequencyPenalty; }
 double Project::presencePenalty() const { return m_presencePenalty; }
-
-QString Project::rootFolder() const { return m_rootFolder; }
-QStringList Project::includeDocs() const { return m_includeDocs; }
-QStringList Project::sourceFolders() const { return m_sourceFolders; }
-QStringList Project::sourceFileTypes() const { return m_sourceFileTypes; }
-QStringList Project::docFileTypes() const { return m_docFileTypes; }
-QMap<QString, QString> Project::commandPipes() const { return m_commandPipes; }
