@@ -77,6 +77,11 @@ private:
 
     // Promote markdown headers by specified levels (caps at 6)
     QString promoteMarkdownHeaders(const QString &md, int levelOffset);
+
+    QString cacheIncludesInContent(const QString& content);
+    QString sessionFolder() const;
+    QString sessionDocCacheFolder() const;
+    QString sessionSrcCacheFolder() const;
 };
 
 #endif // SESSION_H

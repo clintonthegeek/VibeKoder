@@ -1,6 +1,7 @@
 #include "session.h"
 #include "project.h"
 #include <QFile>
+#include <QFileInfo>
 #include <QTextStream>
 #include <QDateTime>
 #include <QDir>
@@ -567,6 +568,124 @@ QString Session::expandIncludesRecursiveWithoutPromotion(const QString &content,
     }
 
     // **DO NOT promote headers here**; caller handles promotion after recursion
+
+    return result;
+}
+
+
+// Return directory where session file resides, used for placing cached folders
+QString Session::sessionFolder() const
+{
+    QFileInfo fi(m_filepath);
+    return fi.absolutePath();
+}
+
+// Cache folder for docs: e.g. sessions/001-doc
+QString Session::sessionDocCacheFolder() const
+{
+    QFileInfo fi(m_filepath);
+    QString base = fi.baseName(); // e.g., "001"
+    QString folder = sessionFolder();
+    QString cacheFolder = QDir(folder).filePath(base + "-doc");
+    QDir().mkpath(cacheFolder);
+    return cacheFolder;
+}
+
+// Cache folder for sources: e.g. sessions/001-src
+QString Session::sessionSrcCacheFolder() const
+{
+    QFileInfo fi(m_filepath);
+    QString base = fi.baseName();
+    QString folder = sessionFolder();
+    QString cacheFolder = QDir(folder).filePath(base + "-src");
+    QDir().mkpath(cacheFolder);
+    return cacheFolder;
+}
+
+// Helper to copy files to the cache folder with overwrite
+static bool copyFileToCacheFolder(const QString &srcPath, const QString &cacheFolder, const QString &relPath)
+{
+    QFileInfo srcInfo(srcPath);
+    if (!srcInfo.exists()) {
+        qWarning() << "Source file does not exist:" << srcPath;
+        return false;
+    }
+
+    QString destPath = QDir(cacheFolder).filePath(relPath);
+    QFileInfo destInfo(destPath);
+    QDir destDir = destInfo.dir();
+    if (!destDir.exists()) {
+        if (!destDir.mkpath(".")) {
+            qWarning() << "Failed to create cache folder:" << destDir.absolutePath();
+            return false;
+        }
+    }
+    if (QFile::exists(destPath)) {
+        if (!QFile::remove(destPath)) {
+            qWarning() << "Cannot remove existing cached file:" << destPath;
+            return false;
+        }
+    }
+    if (!QFile::copy(srcPath, destPath)) {
+        qWarning() << "Failed copying source file to cache:" << srcPath << "->" << destPath;
+        return false;
+    }
+    qDebug() << "Cached file:" << srcPath << "->" << destPath;
+    return true;
+}
+
+// Main method to scan content and cache all includes, rewriting markers to cached references
+QString Session::cacheIncludesInContent(const QString &content)
+{
+    QString result = content;
+    if (!m_project) {
+        qWarning() << "No project available to resolve includes in caching";
+        return result;
+    }
+
+    QString projectRoot = m_project->rootFolder();
+    QString docCacheFolder = sessionDocCacheFolder();
+    QString srcCacheFolder = sessionSrcCacheFolder();
+
+    // Regex to match both include and cached markers
+    static QRegularExpression includeOrCachedRe(R"(<!--\s*(include|cached):\s*(.*?)\s*-->)");
+
+    int offset = 0;
+    while (true) {
+        QRegularExpressionMatch m = includeOrCachedRe.match(result, offset);
+        if (!m.hasMatch())
+            break;
+
+        QString type = m.captured(1).trimmed().toLower(); // "include" or "cached"
+        QString includePath = m.captured(2).trimmed();
+
+        // Determine absolute source file path (relative to project root)
+        QString absSrcFile = QDir(projectRoot).filePath(includePath);
+
+        // Determine cache folder by heuristic: docs in docs cache, src in src cache
+        QString lowerPath = includePath.toLower();
+        QString cacheFolder = lowerPath.endsWith(".h") || lowerPath.endsWith(".cpp") || lowerPath.endsWith(".hpp")
+                                  ? srcCacheFolder : docCacheFolder;
+
+        // Copy source file to cache folder, keep relative sub-paths intact
+        bool copied = copyFileToCacheFolder(absSrcFile, cacheFolder, includePath);
+
+        // Rewrite include line if it is "include", keep as cached if already "cached"
+        QString replacement;
+        if (type == "include") {
+            replacement = QString("<!-- cached: %1 -->").arg(includePath);
+        } else {
+            replacement = m.captured(0); // keep cached as is
+        }
+
+        int start = m.capturedStart(0);
+        int length = m.capturedLength(0);
+
+        result.replace(start, length, replacement);
+        offset = start + replacement.length();
+
+        qDebug() << "Processed include:" << includePath << "Type:" << type << "Copied:" << copied;
+    }
 
     return result;
 }
