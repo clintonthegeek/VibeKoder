@@ -135,7 +135,7 @@ QString Session::compilePrompt()
     for (const auto &slice : m_slices) {
         // Pass headingLevelOffset = 1 because prompt slices are now level 1 headers (# User etc).
         // Included files inside slices are promoted starting at level 2.
-        QString expanded = expandIncludesRecursive(slice.content, visitedFiles, 0);
+        QString expanded = expandIncludesRecursive(slice.content, visitedFiles, 0, true);
 
         QString intro;
         switch (slice.role) {
@@ -212,96 +212,6 @@ int Session::findEnclosingHeaderLevel(const QString &text, int includePos)
     return lastHeader.captured(1).length();
 }
 
-// Recursive include expansion with heading level context
-QString Session::expandIncludesRecursive(const QString &content,
-                                         QSet<QString> &visitedFiles,
-                                         int parentHeaderLevel)
-{
-    static const QRegularExpression includeRe(R"(<!--\s*include:\s*(.*?)\s*-->)");
-
-    qDebug() << "expandIncludesRecursive called with parentHeaderLevel =" << parentHeaderLevel
-             << ", visitedFiles size =" << visitedFiles.size();
-
-    QString result = content;
-
-    if (!m_project) {
-        qWarning() << "No project assigned to session; cannot resolve includes";
-        // Promote current block headers based on parentHeaderLevel and return
-        QString promotedResult = promoteMarkdownHeaders(result, parentHeaderLevel);
-        qDebug() << "No project: after promotion headers length =" << promotedResult.length();
-        return promotedResult;
-    }
-
-    QString rootFolder = m_project->rootFolder();
-    if (rootFolder.isEmpty())
-        rootFolder = QDir::currentPath();
-
-    int offset = 0;
-    while (true) {
-        QRegularExpressionMatch m = includeRe.match(result, offset);
-        if (!m.hasMatch())
-            break;
-
-        QString includePath = m.captured(1).trimmed();
-        QString absPath = QDir(rootFolder).filePath(includePath);
-
-        qDebug() << "Include found:" << includePath << "resolved to" << absPath;
-
-        if (visitedFiles.contains(absPath)) {
-            qWarning() << "Circular include detected:" << absPath;
-            offset = m.capturedEnd(0);
-            continue;
-        }
-
-        visitedFiles.insert(absPath);
-
-        int includePos = m.capturedStart(0);
-
-        // Find the header level enclosing the include marker within current content
-        int enclosingLevel = findEnclosingHeaderLevel(result, includePos);
-        if (enclosingLevel == 0) {
-            enclosingLevel = parentHeaderLevel; // fallback to passed header level
-        }
-
-        qDebug() << "Enclosing header level at include position:" << enclosingLevel;
-
-        QString includedContent;
-        QFile incFile(absPath);
-        if (incFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-            includedContent = incFile.readAll();
-            incFile.close();
-
-            // Recursively expand includes inside the included content, increasing header level +1
-            includedContent = expandIncludesRecursiveWithoutPromotion(includedContent, visitedFiles, enclosingLevel + 1);
-            // Promote headers in the included content ONLY ONCE here accordingly
-            includedContent = promoteMarkdownHeaders(includedContent, enclosingLevel + 1);
-
-            qDebug() << "Included content after recursive expansion and promotion, length =" << includedContent.length();
-
-        } else {
-            includedContent = QString("[Could not include file: %1]").arg(absPath);
-            qWarning() << "Failed to open include file:" << absPath;
-        }
-
-        int start = m.capturedStart(0);
-        int length = m.capturedLength(0);
-
-        // Replace include marker with expanded and promoted included content
-        result.replace(start, length, includedContent);
-
-        offset = start + includedContent.length();
-
-        visitedFiles.remove(absPath);
-        qDebug() << "Include replaced at position" << start << ", new offset =" << offset;
-    }
-
-    // Finally, promote headers in the current block only based on parentHeaderLevel
-    QString finalResult = promoteMarkdownHeaders(result, parentHeaderLevel);
-    qDebug() << "Final promotion with parentHeaderLevel =" << parentHeaderLevel
-             << ", result length =" << finalResult.length();
-
-    return finalResult;
-}
 
 void Session::setCommandPipeOutput(const QString &key, const QString &output)
 {
@@ -485,23 +395,83 @@ QString Session::compiledRawMarkdown() const
     return result;
 }
 
-QString Session::expandIncludesRecursiveWithoutPromotion(const QString &content,
-                                                         QSet<QString> &visitedFiles,
-                                                         int parentHeaderLevel)
+QString Session::sessionCacheFolder() const
+{
+    QFileInfo fi(m_filepath);
+    QString baseName = fi.completeBaseName();  // e.g. "001"
+    QString sessionsFolder = fi.dir().absolutePath(); // sessions folder path
+
+    QString sessionCacheDir = QDir(sessionsFolder).filePath(baseName);
+
+    if (!QDir(sessionCacheDir).exists()) {
+        QDir().mkpath(sessionCacheDir);
+    }
+
+    return sessionCacheDir;
+}
+
+QString Session::sessionDocCacheFolder() const
+{
+    QString cacheFolder = QDir(sessionCacheFolder()).filePath("docs");
+    if (!QDir(cacheFolder).exists()) {
+        QDir().mkpath(cacheFolder);
+    }
+    return cacheFolder;
+}
+
+QString Session::sessionSrcCacheFolder() const
+{
+    QString cacheFolder = QDir(sessionCacheFolder()).filePath("src");
+    if (!QDir(cacheFolder).exists()) {
+        QDir().mkpath(cacheFolder);
+    }
+    return cacheFolder;
+}
+
+// Return directory where session file resides, used for placing cached folders
+QString Session::sessionFolder() const
+{
+    QFileInfo fi(m_filepath);
+    return fi.absolutePath();
+}
+
+
+
+QString Session::expandIncludesRecursive(const QString &content,
+                                         QSet<QString> &visitedFiles,
+                                         int parentHeaderLevel,
+                                         bool promoteHeaders)
 {
     static const QRegularExpression includeRe(R"(<!--\s*include:\s*(.*?)\s*-->)");
 
-
-    qDebug() << "expandIncludesRecursiveWithoutPromotion called with parentHeaderLevel ="
-             << parentHeaderLevel << ", visitedFiles size =" << visitedFiles.size();
+    qDebug() << "expandIncludesRecursive called with parentHeaderLevel =" << parentHeaderLevel
+             << ", visitedFiles size =" << visitedFiles.size()
+             << ", promoteHeaders =" << promoteHeaders;
 
     QString result = content;
 
     if (!m_project) {
         qWarning() << "No project assigned to session; cannot resolve includes";
-        // Return content as-is; no promotion here (caller responsible)
-        return result;
+        // If promotion requested, promote headers here before returning
+        if (promoteHeaders) {
+            QString promoted = promoteMarkdownHeaders(result, parentHeaderLevel);
+            qDebug() << "No project: after promotion headers length =" << promoted.length();
+            return promoted;
+        } else {
+            return result;
+        }
     }
+
+    // ** Step 1: Cache includes in content, rewriting include -> cached **
+    result = cacheIncludesInContent(result);
+
+    //save any changes to the session made by rewriting include to cached
+    m_slices.clear();
+    if (!parseSessionMarkdown(result)) {
+        qWarning() << "Failed to parse session after caching includes.";
+        // Decide whether to continue or fail load
+    }
+    save(); // Save the updated session file with cached markers
 
     QString rootFolder = m_project->rootFolder();
     if (rootFolder.isEmpty())
@@ -528,10 +498,10 @@ QString Session::expandIncludesRecursiveWithoutPromotion(const QString &content,
 
         int includePos = m.capturedStart(0);
 
-        // Find the header level enclosing the include marker within current content
+        // Find header level enclosing the include marker
         int enclosingLevel = findEnclosingHeaderLevel(result, includePos);
         if (enclosingLevel == 0) {
-            enclosingLevel = parentHeaderLevel; // fallback to passed header level
+            enclosingLevel = parentHeaderLevel; // fallback
         }
 
         qDebug() << "Enclosing header level at include position:" << enclosingLevel;
@@ -542,13 +512,18 @@ QString Session::expandIncludesRecursiveWithoutPromotion(const QString &content,
             includedContent = incFile.readAll();
             incFile.close();
 
-            // Recursive expand includes inside the included content, without promotion
-            includedContent = expandIncludesRecursiveWithoutPromotion(includedContent, visitedFiles, enclosingLevel + 1);
+            // Recursively expand includes in includedContent,
+            // with promoteHeaders = false to avoid double promotion during recursion
+            includedContent = expandIncludesRecursive(includedContent, visitedFiles, enclosingLevel + 1, false);
 
-            // **Do NOT promote headers here**
-            // Leave header promotion to the caller after recursion returns
+            if (promoteHeaders) {
+                // Promote headers ONCE after recursion
+                includedContent = promoteMarkdownHeaders(includedContent, enclosingLevel + 1);
+            }
 
-            qDebug() << "Included content after recursive expansion (no promotion) length =" << includedContent.length();
+            qDebug() << "Included content after recursive expansion"
+                     << (promoteHeaders ? "and promotion" : "(no promotion)")
+                     << "length =" << includedContent.length();
 
         } else {
             includedContent = QString("[Could not include file: %1]").arg(absPath);
@@ -558,48 +533,23 @@ QString Session::expandIncludesRecursiveWithoutPromotion(const QString &content,
         int start = m.capturedStart(0);
         int length = m.capturedLength(0);
 
-        // Replace include marker with expanded included content (no promoted headers yet)
         result.replace(start, length, includedContent);
 
         offset = start + includedContent.length();
 
         visitedFiles.remove(absPath);
+
         qDebug() << "Include replaced at position" << start << ", new offset =" << offset;
     }
 
-    // **DO NOT promote headers here**; caller handles promotion after recursion
-
-    return result;
-}
-
-
-// Return directory where session file resides, used for placing cached folders
-QString Session::sessionFolder() const
-{
-    QFileInfo fi(m_filepath);
-    return fi.absolutePath();
-}
-
-// Cache folder for docs: e.g. sessions/001-doc
-QString Session::sessionDocCacheFolder() const
-{
-    QFileInfo fi(m_filepath);
-    QString base = fi.baseName(); // e.g., "001"
-    QString folder = sessionFolder();
-    QString cacheFolder = QDir(folder).filePath(base + "-doc");
-    QDir().mkpath(cacheFolder);
-    return cacheFolder;
-}
-
-// Cache folder for sources: e.g. sessions/001-src
-QString Session::sessionSrcCacheFolder() const
-{
-    QFileInfo fi(m_filepath);
-    QString base = fi.baseName();
-    QString folder = sessionFolder();
-    QString cacheFolder = QDir(folder).filePath(base + "-src");
-    QDir().mkpath(cacheFolder);
-    return cacheFolder;
+    if (promoteHeaders) {
+        QString finalResult = promoteMarkdownHeaders(result, parentHeaderLevel);
+        qDebug() << "Final promotion with parentHeaderLevel =" << parentHeaderLevel
+                 << ", result length =" << finalResult.length();
+        return finalResult;
+    } else {
+        return result;
+    }
 }
 
 // Helper to copy files to the cache folder with overwrite
@@ -638,53 +588,83 @@ static bool copyFileToCacheFolder(const QString &srcPath, const QString &cacheFo
 QString Session::cacheIncludesInContent(const QString &content)
 {
     QString result = content;
+
     if (!m_project) {
-        qWarning() << "No project available to resolve includes in caching";
+        qWarning() << "No project; skipping include caching step";
         return result;
     }
 
-    QString projectRoot = m_project->rootFolder();
-    QString docCacheFolder = sessionDocCacheFolder();
-    QString srcCacheFolder = sessionSrcCacheFolder();
+    const QString projectRoot = m_project->rootFolder();
+    const QString docCacheRoot = sessionDocCacheFolder();
+    const QString srcCacheRoot = sessionSrcCacheFolder();
 
-    // Regex to match both include and cached markers
-    static QRegularExpression includeOrCachedRe(R"(<!--\s*(include|cached):\s*(.*?)\s*-->)");
+    // Regex for both include or cached markers
+    static const QRegularExpression markerRe(R"(<!--\s*(include|cached):\s*(.*?)\s*-->)");
 
     int offset = 0;
     while (true) {
-        QRegularExpressionMatch m = includeOrCachedRe.match(result, offset);
-        if (!m.hasMatch())
+        QRegularExpressionMatch match = markerRe.match(result, offset);
+        if (!match.hasMatch())
             break;
 
-        QString type = m.captured(1).trimmed().toLower(); // "include" or "cached"
-        QString includePath = m.captured(2).trimmed();
+        QString markerType = match.captured(1).toLower();
+        QString filePath = match.captured(2).trimmed();
 
-        // Determine absolute source file path (relative to project root)
-        QString absSrcFile = QDir(projectRoot).filePath(includePath);
+        qDebug() << "Processing marker:" << match.captured(0)
+                 << "| Type:" << markerType
+                 << "| Path:" << filePath;
 
-        // Determine cache folder by heuristic: docs in docs cache, src in src cache
-        QString lowerPath = includePath.toLower();
-        QString cacheFolder = lowerPath.endsWith(".h") || lowerPath.endsWith(".cpp") || lowerPath.endsWith(".hpp")
-                                  ? srcCacheFolder : docCacheFolder;
-
-        // Copy source file to cache folder, keep relative sub-paths intact
-        bool copied = copyFileToCacheFolder(absSrcFile, cacheFolder, includePath);
-
-        // Rewrite include line if it is "include", keep as cached if already "cached"
-        QString replacement;
-        if (type == "include") {
-            replacement = QString("<!-- cached: %1 -->").arg(includePath);
-        } else {
-            replacement = m.captured(0); // keep cached as is
+        if (markerType == "cached") {
+            // Leave cached lines as they are: no copying or rewriting
+            offset = match.capturedEnd(0);
+            continue;
         }
 
-        int start = m.capturedStart(0);
-        int length = m.capturedLength(0);
+        // markerType == "include": perform copying and rewrite
+
+        QString absSrcFile = QDir(projectRoot).filePath(filePath);
+
+        QString relPath = filePath;
+
+        // Remove redundant 'docs/' or 'src/' prefix from the path
+        QString docsFolderName = QFileInfo(m_project->docsFolder()).fileName();
+        QString srcFolderName = QFileInfo(m_project->srcFolder()).fileName();
+
+        if (relPath.startsWith(docsFolderName + "/")) {
+            relPath = relPath.mid(docsFolderName.length() + 1);
+            qDebug() << "Stripped docs prefix from include path:" << relPath;
+        } else if (relPath.startsWith(srcFolderName + "/")) {
+            relPath = relPath.mid(srcFolderName.length() + 1);
+            qDebug() << "Stripped src prefix from include path:" << relPath;
+        }
+
+        // Determine target cache folder by file extension heuristic
+        QString cacheBaseFolder;
+        if (relPath.endsWith(".h") || relPath.endsWith(".cpp") || relPath.endsWith(".hpp")) {
+            cacheBaseFolder = srcCacheRoot;
+        } else {
+            cacheBaseFolder = docCacheRoot;
+        }
+
+        // Copy source file into cache folder using stripped relative path
+        bool copied = copyFileToCacheFolder(absSrcFile, cacheBaseFolder, relPath);
+
+        if (!copied)
+            qWarning() << "Failed to copy file to cache:" << absSrcFile << "to" << cacheBaseFolder;
+        else
+            qDebug() << "Copied file to cache:" << absSrcFile << "->" << QDir(cacheBaseFolder).filePath(relPath);
+
+        // Rewrite marker: include → cached
+        QString replacement = QString("<!-- cached: %1 -->").arg(relPath);
+
+        int start = match.capturedStart(0);
+        int length = match.capturedLength(0);
 
         result.replace(start, length, replacement);
+
         offset = start + replacement.length();
 
-        qDebug() << "Processed include:" << includePath << "Type:" << type << "Copied:" << copied;
+        qDebug() << "Rewrote include line to cached at pos" << start << ", new offset" << offset;
     }
 
     return result;

@@ -65,12 +65,9 @@ private:
     // Internal helper to recursively expand includes in content
     // Updated expandIncludesRecursive with additional parameter for header level context
     QString expandIncludesRecursive(const QString &content,
-                                    QSet<QString> &visitedFiles,
-                                    int parentHeaderLevel = 0);
-
-    QString expandIncludesRecursiveWithoutPromotion(const QString &content,
-                                                    QSet<QString> &visitedFiles,
-                                                    int parentHeaderLevel);
+                                             QSet<QString> &visitedFiles,
+                                             int parentHeaderLevel,
+                                             bool promoteHeaders);
 
     // Helper to find enclosing header level before an include marker
     int findEnclosingHeaderLevel(const QString &text, int includePos);
@@ -80,6 +77,7 @@ private:
 
     QString cacheIncludesInContent(const QString& content);
     QString sessionFolder() const;
+    QString sessionCacheFolder() const;
     QString sessionDocCacheFolder() const;
     QString sessionSrcCacheFolder() const;
 };
