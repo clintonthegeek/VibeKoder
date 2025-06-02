@@ -2,43 +2,56 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
-#include <qplaintextedit.h>
+#include <QMap>
 
-QT_BEGIN_NAMESPACE
-namespace Ui {
-class MainWindow;
-}
-QT_END_NAMESPACE
+class QTabWidget;
+class QLabel;
+class QListWidget;
+class QPushButton;
 
-class Project;
-class Session;
-class OpenAIRequest;
+#include "project.h"
+#include "sessiontabwidget.h"
 
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
 public:
-    MainWindow(QWidget *parent = nullptr);
+    explicit MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
 private slots:
     void onOpenProject();
     void onOpenSession();
     void onSaveSession();
-    void onSendPrompt();
-    void onOpenAIResponse(const QString &response);
-    void onOpenAIError(const QString &error);
+
+    void onCreateSessionFromTemplate();
+    void onOpenSelectedSession();
 
 private:
-    Ui::MainWindow *ui;
+    void setupUi();
+    void loadProjectDataToUi();
+    void refreshSessionList();
 
-    Project *m_project = nullptr;
-    Session *m_session = nullptr;
-    OpenAIRequest *m_openAI = nullptr;
+    Project* m_project = nullptr;
 
-    void clearSession();
-    void moveCursorToUserPrompt(QPlainTextEdit *editor);
+    // UI widgets
+    QTabWidget* m_tabWidget = nullptr;
+
+    // Project tab widgets
+    QWidget* m_projectTab = nullptr;
+    QLabel* m_projectInfoLabel = nullptr;
+    QListWidget* m_templateList = nullptr;
+    QListWidget* m_sessionList = nullptr;
+    QPushButton* m_createSessionBtn = nullptr;
+    QPushButton* m_openSessionBtn = nullptr;
+
+    // Map session file paths to session tab widgets (avoid duplicates)
+    QMap<QString, SessionTabWidget*> m_openSessions;
+
+    OpenAIRequest* m_openAIRequest = nullptr;
+    QMap<QString, SessionTabWidget*> m_pendingSessions;
+
 };
 
 #endif // MAINWINDOW_H

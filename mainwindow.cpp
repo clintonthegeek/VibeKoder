@@ -1,259 +1,278 @@
 #include "mainwindow.h"
-#include "./ui_mainwindow.h"
-#include "project.h"
-#include "session.h"
-#include "openai_request.h"
+#include "sessiontabwidget.h"
 
+#include <QMenuBar>
+#include <QMenu>
+#include <QToolBar>
+#include <QStatusBar>
+#include <QTabWidget>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QListWidget>
+#include <QPushButton>
 #include <QFileDialog>
 #include <QMessageBox>
-#include <QTextStream>
 #include <QDebug>
-#include <QTextCursor>
-#include <QRegularExpression>
-#include <QRegularExpressionMatch>
-#include <QRegularExpressionMatchIterator>
+
+#include "openai_request.h"  // Assuming you have this wrapper
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
-    , ui(new Ui::MainWindow)
 {
-    ui->setupUi(this);
-
-    m_openAI = new OpenAIRequest(this);
-    connect(m_openAI, &OpenAIRequest::requestFinished, this, &MainWindow::onOpenAIResponse);
-    connect(m_openAI, &OpenAIRequest::requestError, this, &MainWindow::onOpenAIError);
-
-    // You would add corresponding buttons and connect them to the slots:
-    // For brevity, assume ui->actionOpenProject, ui->actionOpenSession etc. exist.
-    connect(ui->actionOpenProject, &QAction::triggered, this, &MainWindow::onOpenProject);
-    connect(ui->actionOpenSession, &QAction::triggered, this, &MainWindow::onOpenSession);
-    connect(ui->actionSaveSession, &QAction::triggered, this, &MainWindow::onSaveSession);
-    connect(ui->sendButton, &QPushButton::clicked, this, &MainWindow::onSendPrompt);
+    setupUi();
 }
 
 MainWindow::~MainWindow()
 {
-    delete ui;
-    clearSession();
     delete m_project;
 }
 
-void MainWindow::clearSession()
+void MainWindow::setupUi()
 {
-    if (m_session) {
-        delete m_session;
-        m_session = nullptr;
-    }
+    setWindowTitle("VibeKoder");
+
+    // === Menu and Toolbar ===
+    QMenu* projectMenu = menuBar()->addMenu("Project");
+    QAction* openProjectAction = new QAction("Open Project", this);
+    projectMenu->addAction(openProjectAction);
+    connect(openProjectAction, &QAction::triggered, this, &MainWindow::onOpenProject);
+
+    QMenu* sessionMenu = menuBar()->addMenu("Sessions");
+    QAction* openSessionAction = new QAction("Open Session", this);
+    QAction* saveSessionAction = new QAction("Save Session", this);
+    sessionMenu->addAction(openSessionAction);
+    sessionMenu->addAction(saveSessionAction);
+    connect(openSessionAction, &QAction::triggered, this, &MainWindow::onOpenSession);
+    connect(saveSessionAction, &QAction::triggered, this, &MainWindow::onSaveSession);
+
+    QToolBar* toolbar = addToolBar("Main Toolbar");
+    toolbar->addAction(openProjectAction);
+    toolbar->addAction(openSessionAction);
+    toolbar->addAction(saveSessionAction);
+
+    statusBar();
+
+    // === Central Tabs ===
+    m_tabWidget = new QTabWidget(this);
+    setCentralWidget(m_tabWidget);
+
+    // === Project Tab ===
+    m_projectTab = new QWidget();
+    QVBoxLayout* projLayout = new QVBoxLayout(m_projectTab);
+
+    m_projectInfoLabel = new QLabel("No project loaded");
+    m_projectInfoLabel->setWordWrap(true);
+    projLayout->addWidget(m_projectInfoLabel);
+
+    projLayout->addWidget(new QLabel("Templates:"));
+    m_templateList = new QListWidget();
+    projLayout->addWidget(m_templateList);
+
+    m_createSessionBtn = new QPushButton("Create New Session from Template");
+    projLayout->addWidget(m_createSessionBtn);
+    connect(m_createSessionBtn, &QPushButton::clicked, this, &MainWindow::onCreateSessionFromTemplate);
+
+    projLayout->addSpacing(10);
+    projLayout->addWidget(new QLabel("Available Sessions:"));
+    m_sessionList = new QListWidget();
+    projLayout->addWidget(m_sessionList);
+
+    m_openSessionBtn = new QPushButton("Open Selected Session");
+    projLayout->addWidget(m_openSessionBtn);
+    connect(m_openSessionBtn, &QPushButton::clicked, this, &MainWindow::onOpenSelectedSession);
+
+
+
+    m_tabWidget->addTab(m_projectTab, "Project");
 }
 
 void MainWindow::onOpenProject()
 {
-    QString filename = QFileDialog::getOpenFileName(this, "Open Project TOML", QString(), "TOML Files (*.toml)");
-    if (filename.isEmpty())
+    QString fileName = QFileDialog::getOpenFileName(this, "Open Project File", QString(), "Project Files (*.toml)");
+    if (fileName.isEmpty())
         return;
 
     if (m_project)
         delete m_project;
-    m_project = new Project();
 
-    if (!m_project->load(filename)) {
-        QMessageBox::critical(this, "Error", "Failed to load project file.");
+    m_project = new Project();
+    if (!m_project->load(fileName)) {
+        QMessageBox::warning(this, "Error", "Failed to load project file.");
         delete m_project;
         m_project = nullptr;
         return;
     }
-    statusBar()->showMessage("Loaded project: " + filename);
+
+    loadProjectDataToUi();
+    refreshSessionList();
+    statusBar()->showMessage("Project loaded.");
+}
+
+void MainWindow::loadProjectDataToUi()
+{
+    if (!m_project) {
+        m_projectInfoLabel->setText("No project loaded");
+        m_templateList->clear();
+        m_sessionList->clear();
+        return;
+    }
+
+    // Display project folder info (simple HTML)
+    QString html;
+    html += "<b>Project Root:</b> " + m_project->rootFolder() + "<br>";
+    html += "<b>Docs Folder:</b> " + m_project->docsFolder() + "<br>";
+    html += "<b>Source Folder:</b> " + m_project->srcFolder() + "<br>";
+    html += "<b>Sessions Folder:</b> " + m_project->sessionsFolder() + "<br>";
+    html += "<b>Templates Folder:</b> " + m_project->templatesFolder() + "<br>";
+    html += "<b>Include Doc Folders:</b><ul>";
+    for (const QString &incFolder : m_project->includeDocFolders()) {
+        html += "<li>" + incFolder + "</li>";
+    }
+    html += "</ul>";
+
+    m_projectInfoLabel->setText(html);
+
+    // Populate template list
+    m_templateList->clear();
+    QDir templatesDir(m_project->templatesFolder());
+    if (templatesDir.exists()) {
+        QStringList filters{"*.md", "*.markdown"};
+        QFileInfoList files = templatesDir.entryInfoList(filters, QDir::Files);
+        for (const QFileInfo &fi : files)
+            m_templateList->addItem(fi.fileName());
+    }
+}
+
+void MainWindow::refreshSessionList()
+{
+    m_sessionList->clear();
+    if (!m_project)
+        return;
+
+    QDir sessionsDir(m_project->sessionsFolder());
+    if (!sessionsDir.exists())
+        return;
+
+    QStringList filters{"*.md", "*.markdown"};
+    QFileInfoList files = sessionsDir.entryInfoList(filters, QDir::Files, QDir::Time);
+    for (const QFileInfo &fi : files)
+        m_sessionList->addItem(fi.fileName());
+}
+
+void MainWindow::onCreateSessionFromTemplate()
+{
+    if (!m_project) {
+        QMessageBox::warning(this, "No Project", "Load a project before creating a session.");
+        return;
+    }
+
+    QListWidgetItem *selItem = m_templateList->currentItem();
+    if (!selItem) {
+        QMessageBox::warning(this, "No Template", "Select a template first.");
+        return;
+    }
+
+    QString templateName = selItem->text();
+    QString templatePath = QDir(m_project->templatesFolder()).filePath(templateName);
+
+    QFile templateFile(templatePath);
+    if (!templateFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Error", "Failed to open template.");
+        return;
+    }
+
+    QString templateContent = QString::fromUtf8(templateFile.readAll());
+    templateFile.close();
+
+    QDir sessionsDir(m_project->sessionsFolder());
+    if (!sessionsDir.exists())
+        sessionsDir.mkpath(".");
+
+    // Find next unused session number (001, 002, ...)
+    int sessionNumber = 1;
+    QString filename;
+    do {
+        filename = QString("%1.md").arg(sessionNumber, 3, 10, QChar('0'));
+        ++sessionNumber;
+    } while (sessionsDir.exists(filename));
+
+    QString newSessionPath = sessionsDir.filePath(filename);
+
+    QFile newSessionFile(newSessionPath);
+    if (!newSessionFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Error", "Failed to create new session file.");
+        return;
+    }
+
+    QTextStream out(&newSessionFile);
+    out << templateContent;
+    newSessionFile.close();
+
+    // Open newly created session tab
+    if (m_openSessions.contains(newSessionPath)) {
+        m_tabWidget->setCurrentWidget(m_openSessions.value(newSessionPath));
+    } else {
+        SessionTabWidget *tab = new SessionTabWidget(newSessionPath, m_project, this);
+        m_openSessions.insert(newSessionPath, tab);
+        m_tabWidget->addTab(tab, filename);
+        m_tabWidget->setCurrentWidget(tab);
+
+        // Connect session tab send prompt signal to your OpenAI request handler here,
+        // e.g., connect(tab, &SessionTabWidget::requestSendPrompt, ...)
+    }
+
+    refreshSessionList();
+    statusBar()->showMessage(QString("Created session %1").arg(filename));
+}
+
+void MainWindow::onOpenSelectedSession()
+{
+    if (!m_project) {
+        QMessageBox::warning(this, "No Project", "Load a project before opening sessions.");
+        return;
+    }
+    QListWidgetItem* selItem = m_sessionList->currentItem();
+    if (!selItem) {
+        QMessageBox::warning(this, "No Session", "Select a session to open.");
+        return;
+    }
+
+    QString sessionName = selItem->text();
+    QString sessionPath = QDir(m_project->sessionsFolder()).filePath(sessionName);
+
+    if (m_openSessions.contains(sessionPath)) {
+        m_tabWidget->setCurrentWidget(m_openSessions.value(sessionPath));
+    } else {
+        SessionTabWidget *tab = new SessionTabWidget(sessionPath, m_project, this);
+        m_openSessions.insert(sessionPath, tab);
+        m_tabWidget->addTab(tab, sessionName);
+        m_tabWidget->setCurrentWidget(tab);
+    }
+
+    statusBar()->showMessage(QString("Opened session %1").arg(sessionName));
 }
 
 void MainWindow::onOpenSession()
 {
-    if (!m_project) {
-        QMessageBox::warning(this, "No Project", "Please load a project first.");
-        return;
-    }
-
-    QString filename = QFileDialog::getOpenFileName(this, "Open Session Markdown", QString(), "Markdown Files (*.md *.markdown)");
-    if (filename.isEmpty())
-        return;
-
-    clearSession();
-    m_session = new Session(m_project);
-
-    if (!m_session->load(filename)) {
-        QMessageBox::critical(this, "Error", "Failed to load session file.");
-        clearSession();
-        return;
-    }
-
-    ui->textEditSession->setPlainText(""); // Clear editor
-    // Show session slices concatenated for editing in this naive Phase 1
-    QString combinedText;
-    for (const auto &slice : m_session->slices()) {
-        QString role;
-        switch (slice.role) {
-        case MessageRole::User: role = "User"; break;
-        case MessageRole::Assistant: role = "Assistant"; break;
-        case MessageRole::System: role = "System"; break;
-        }
-        combinedText += QString("### %1 (%2)\n```markdown\n%3\n```\n\n")
-                            .arg(role).arg(slice.timestamp).arg(slice.content.trimmed());
-    }
-    ui->textEditSession->setPlainText(combinedText);
-    statusBar()->showMessage("Session loaded: " + filename);
+    // Optional: implement dialog for arbitrary session file selection
 }
 
 void MainWindow::onSaveSession()
 {
-    if (!m_session) {
-        QMessageBox::warning(this, "No Session", "Load or create a session first.");
+    if (m_openSessions.isEmpty())
         return;
-    }
 
-    // For Phase 1, just parse editor content (naively) and save session file
-    const QString editedText = ui->textEditSession->toPlainText();
-
-    if (!m_session->parseSessionMarkdown(editedText)) {
-        QMessageBox::warning(this, "Parse Error", "Edited session content is malformed.");
+    QWidget* currentWidget = m_tabWidget->currentWidget();
+    if (!currentWidget)
         return;
-    }
 
-    if (!m_session->save(QString())) {
-        QMessageBox::warning(this, "Save Error", "Failed to save session file.");
-        return;
+    SessionTabWidget *tab = qobject_cast<SessionTabWidget*>(currentWidget);
+    if (tab) {
+        if (!tab->saveSession())
+            QMessageBox::warning(this, "Save Failed", "Failed to save the current session.");
+        else
+            statusBar()->showMessage("Session saved.");
     }
-    statusBar()->showMessage("Session saved.");
 }
 
-void MainWindow::onSendPrompt()
-{
-    if (!m_project) {
-        QMessageBox::warning(this, "No Project", "Please load a project first.");
-        return;
-    }
-    if (!m_session) {
-        QMessageBox::warning(this, "No Session", "Please load a session first.");
-        return;
-    }
-
-    // Step 1: Reload session markdown from the session edit box (full conversation)
-    QString sessionMarkdown = ui->textEditSession->toPlainText();
-
-    if (!m_session->parseSessionMarkdown(sessionMarkdown)) {
-        QMessageBox::warning(this, "Parse Error", "Failed to parse the session markdown content.");
-        return;
-    }
-
-    // Step 2: Check user append box for new input
-    QString appendText = ui->textAppendUserPromptSlice->toPlainText().trimmed();
-
-    if (!appendText.isEmpty()) {
-        // Append new user slice
-        m_session->appendUserSlice(appendText);
-
-        // Clear append box for next input
-        ui->textAppendUserPromptSlice->clear();
-
-        // Update the main session editor with new full markdown including appended slice
-        QString fullMarkdown = m_session->compiledRawMarkdown();
-
-        ui->textEditSession->blockSignals(true);
-        ui->textEditSession->setPlainText(fullMarkdown);
-        ui->textEditSession->blockSignals(false);
-    } else {
-        // No text in append box, but user may have edited session editor already
-        // Do nothing extra — send current parsed slices "as is"
-    }
-
-    // Step 3: Compile prompt and send API request
-    QString compiledPrompt = m_session->compilePrompt();
-
-    qDebug().noquote() << "=== Full prompt sent to OpenAI API ===\n" << compiledPrompt;
-
-    m_openAI->setAccessToken(m_project->accessToken());
-    m_openAI->setModel(m_project->model());
-    m_openAI->setPrompt(compiledPrompt);
-    m_openAI->setMaxTokens(m_project->maxTokens());
-    m_openAI->setTemperature(m_project->temperature());
-    m_openAI->setTopP(m_project->topP());
-    m_openAI->setFrequencyPenalty(m_project->frequencyPenalty());
-    m_openAI->setPresencePenalty(m_project->presencePenalty());
-
-    // Disable UI to prevent repeated sends
-    ui->sendButton->setEnabled(false);
-    ui->textEditSession->setReadOnly(true);
-    ui->textAppendUserPromptSlice->setReadOnly(true);
-
-    if (ui->textAppendUserPromptSlice)
-        ui->textAppendUserPromptSlice->clear();
-
-    m_openAI->execute();
-
-    statusBar()->showMessage("Prompt sent to OpenAI...");
-}
-
-void MainWindow::onOpenAIResponse(const QString &response)
-{
-    // Append the assistant response slice to the session
-    QString sanitizedResponse = Session::sanitizeFencesRecursive(response);
-    m_session->appendAssistantSlice(sanitizedResponse);
-
-    // Save session file including new assistant slice
-    m_session->save();
-
-    // Regenerate full markdown including the new assistant reply
-    QString fullMarkdown = m_session->compiledRawMarkdown();
-
-    ui->textEditSession->blockSignals(true);
-    ui->textEditSession->setPlainText(fullMarkdown);
-    ui->textEditSession->blockSignals(false);
-
-    // Re-enable send button and editors
-    ui->sendButton->setEnabled(true);
-    ui->textEditSession->setReadOnly(false);
-    ui->textAppendUserPromptSlice->setReadOnly(false);
-
-    // Place focus back on append user prompt slice box, ready for next input
-    ui->textAppendUserPromptSlice->setFocus();
-
-    statusBar()->showMessage("Response received and session updated");
-}
-
-void MainWindow::onOpenAIError(const QString &error)
-{
-    QMessageBox::critical(this, "OpenAI API Error", error);
-    ui->sendButton->setEnabled(true);
-    ui->textEditSession->setReadOnly(false);
-    statusBar()->showMessage("OpenAI API encountered error");
-}
-
-void MainWindow::moveCursorToUserPrompt(QPlainTextEdit *editor)
-{
-    if (!editor)
-        return;
-
-    const QString text = editor->toPlainText();
-
-    // A simple regex to find last "### User" header and fenced block start
-    QRegularExpression userHeaderRe(R"(### User\s*(?:\(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\))?\s*```markdown\n)");
-
-    // Find all matches, pick last
-    QRegularExpressionMatchIterator i = userHeaderRe.globalMatch(text);
-
-    int pos = -1;
-    while (i.hasNext()) {
-        QRegularExpressionMatch m = i.next();
-        pos = m.capturedEnd(0); // position right after the fenced block start
-    }
-
-    if (pos < 0) {
-        // No user prompt found, place cursor at document end
-        editor->moveCursor(QTextCursor::End);
-        return;
-    }
-
-    // Move cursor at the position 'pos', which is after the "```markdown\n" for last user slice
-    QTextCursor cursor = editor->textCursor();
-    cursor.setPosition(pos, QTextCursor::MoveAnchor);
-    editor->setTextCursor(cursor);
-    editor->setFocus();
-}

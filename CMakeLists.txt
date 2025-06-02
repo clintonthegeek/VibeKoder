@@ -43,6 +43,7 @@ else()
             openai_message.cpp openai_message.h
             openai_message_model.cpp openai_message_model.h
             openai_request.cpp openai_request.h
+            sessiontabwidget.h sessiontabwidget.cpp
         )
     endif()
 endif()
