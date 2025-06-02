@@ -21,6 +21,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setupUi();
+    tryAutoLoadProject();
 }
 
 MainWindow::~MainWindow()
@@ -77,6 +78,7 @@ void MainWindow::setupUi()
     projLayout->addWidget(new QLabel("Available Sessions:"));
     m_sessionList = new QListWidget();
     projLayout->addWidget(m_sessionList);
+    connect(m_sessionList, &QListWidget::itemDoubleClicked, this, &MainWindow::onOpenSelectedSession);
 
     m_openSessionBtn = new QPushButton("Open Selected Session");
     projLayout->addWidget(m_openSessionBtn);
@@ -85,6 +87,56 @@ void MainWindow::setupUi()
 
 
     m_tabWidget->addTab(m_projectTab, "Project");
+}
+
+#include <QDir>
+#include <QFileInfoList>
+
+void MainWindow::tryAutoLoadProject()
+{
+    // Get current working directory (project root)
+    QDir currentDir = QDir::current();
+    if (!currentDir.cdUp()) {
+        qWarning() << "Failed to go up from current directory";
+    }
+
+    // Check for "VK" folder inside current directory
+    QString vkFolderName = "VK";
+    if (!currentDir.exists(vkFolderName)) {
+        qDebug() << "VK folder not found in project root.";
+        return;
+    }
+
+    QDir vkDir(currentDir.filePath(vkFolderName));
+
+    // Find all .toml files in VK folder (non-recursive)
+    QStringList filters;
+    filters << "*.toml";
+    QFileInfoList tomlFiles = vkDir.entryInfoList(filters, QDir::Files | QDir::NoSymLinks);
+
+    if (tomlFiles.size() == 1) {
+        QString projectFilePath = tomlFiles.first().absoluteFilePath();
+        qDebug() << "Auto-loading project file:" << projectFilePath;
+
+        if (m_project)
+            delete m_project;
+
+        m_project = new Project();
+        if (!m_project->load(projectFilePath)) {
+            QMessageBox::warning(this, "Error", "Failed to auto-load project file.");
+            delete m_project;
+            m_project = nullptr;
+            return;
+        }
+
+        loadProjectDataToUi();
+        refreshSessionList();
+        statusBar()->showMessage("Project auto-loaded.");
+    } else if (tomlFiles.isEmpty()) {
+        qDebug() << "No project files found in VK folder.";
+    } else {
+        qDebug() << "Multiple project files found in VK folder; skipping auto-load.";
+    }
 }
 
 void MainWindow::onOpenProject()

@@ -32,6 +32,8 @@ private:
     void setupUi();
     void loadProjectDataToUi();
     void refreshSessionList();
+    void tryAutoLoadProject();
+
 
     Project* m_project = nullptr;
 

@@ -31,6 +31,8 @@ public:
 
     bool load(const QString &filepath);
     bool save(const QString &filepath = QString());
+    bool refreshCacheAndSave();
+
 
     // Accessors
     QVector<PromptSlice> slices() const;
@@ -67,7 +69,12 @@ private:
     QString expandIncludesRecursive(const QString &content,
                                              QSet<QString> &visitedFiles,
                                              int parentHeaderLevel,
-                                             bool promoteHeaders);
+                                             bool promoteHeaders,
+                                             bool expandIncludeMarkers);
+
+    QString expandIncludesOnce(const QString &content);
+
+
 
     // Helper to find enclosing header level before an include marker
     int findEnclosingHeaderLevel(const QString &text, int includePos);
@@ -80,6 +87,8 @@ private:
     QString sessionCacheFolder() const;
     QString sessionDocCacheFolder() const;
     QString sessionSrcCacheFolder() const;
+    QString sessionCacheBaseFolder() const;
+
 };
 
 #endif // SESSION_H

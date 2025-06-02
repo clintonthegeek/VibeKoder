@@ -109,8 +109,8 @@ void OpenAIRequest::setMessages(const QList<OpenAIMessage *> &messages)
     qDeleteAll(m_messages);
     m_messages.clear();
     for (auto msg : messages) {
-        // Create copy for internal storage
-        m_messages.append(new OpenAIMessage(msg->content(), msg->role()));
+        // Create copy for internal storage with proper parent
+        m_messages.append(new OpenAIMessage(msg->content(), msg->role(), this));
     }
 }
 
