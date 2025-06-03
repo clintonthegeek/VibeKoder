@@ -95,14 +95,7 @@ void MainWindow::setupUi()
         widget->deleteLater();
     });
     setupTabWidgetConnections(m_tabWidget);
-    // If you create other `DraggableTabWidget` instances dynamically
-    //(e.g., detached windows), you should also connect their
-    //`tabAboutToDetach` signals similarly, so tracking works for all tab widgets.
-    connect(m_tabWidget, &DraggableTabWidget::tabAboutToDetach,
-            this, [this](QWidget* widget){
-                qDebug() << "[MainWindow] Tracking widget about to detach:" << widget;
-                m_detachingWidgets.insert(widget);
-            });
+
     //for debugging tab selection changes
     connect(m_tabWidget, &QTabWidget::currentChanged, this, [](int index){
         qDebug() << "Main tab widget current tab changed to index:" << index;
@@ -269,11 +262,7 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
     newWindow->setCentralWidget(newTabWidget);
     newTabWidget->setIsMainTabWidget(false);
 
-    connect(newTabWidget, &DraggableTabWidget::tabAboutToDetach,
-            this, [this](QWidget* widget){
-                qDebug() << "[MainWindow] Tracking widget about to detach (detached window):" << widget;
-                m_detachingWidgets.insert(widget);
-            });
+
 
     // Reparent the widget to the new tab widget
     qDebug() << "[MainWindow] Reparenting widget to new tab widget";

@@ -60,7 +60,6 @@ private:
     QMap<QString, SessionTabWidget*> m_pendingSessions;
 
     void setupTabWidgetConnections(DraggableTabWidget* tabWidget);
-    QSet<QWidget*> m_detachingWidgets;
 
 
 
