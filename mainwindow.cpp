@@ -73,6 +73,9 @@ void MainWindow::setupUi()
     m_tabWidget->setTabsClosable(true);
     m_tabWidget->setIsMainTabWidget(true);
 
+    // Connect tabMoved for main tab widget
+    connect(m_tabWidget, &DraggableTabWidget::tabMoved, this, &MainWindow::onTabMoved);
+
     // === Project Tab ===
     m_projectTab = new QWidget();
     m_tabWidget->setProjectTabWidget(m_projectTab);
@@ -236,7 +239,6 @@ void MainWindow::onTabRemoved(QWidget* widget)
 
     qDebug() << "[MainWindow] onTabRemoved called for widget:" << widget;
 
-    // Remove from m_openSessions if present
     QString sessionPathToRemove;
     for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
         if (it.value() == widget) {
@@ -249,7 +251,7 @@ void MainWindow::onTabRemoved(QWidget* widget)
         m_openSessions.remove(sessionPathToRemove);
         qDebug() << "[MainWindow] Removed session from m_openSessions:" << sessionPathToRemove;
     } else {
-        qDebug() << "[MainWindow] Widget not found in m_openSessions";
+        qWarning() << "[MainWindow] Widget not found in m_openSessions on removal:" << widget;
     }
 
     // Close detached window if empty
@@ -292,15 +294,16 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
     newWindow->setGeometry(winRect);
     newWindow->show();
 
-    // Connect tabRemoved to update m_openSessions and log
-    connect(newWindow->findChild<DraggableTabWidget*>(), &DraggableTabWidget::tabRemoved,
-            this, &MainWindow::onTabRemoved);
+    // Connect tabMoved for new detached window's tab widget
+    DraggableTabWidget* dwTabWidget = newWindow->findChild<DraggableTabWidget*>();
+    if (dwTabWidget) {
+        connect(dwTabWidget, &DraggableTabWidget::tabMoved, this, &MainWindow::onTabMoved);
+        connect(dwTabWidget, &DraggableTabWidget::tabRemoved, this, &MainWindow::onTabRemoved);
+    }
 
-    // Connect window destroyed signal to clean up any dangling session tabs
+    // Connect window destroyed to clean up m_openSessions
     connect(newWindow, &QObject::destroyed, this, [this, newWindow]() {
         qDebug() << "[MainWindow] DetachedWindow destroyed:" << newWindow;
-        // Optionally clean up m_openSessions entries for tabs that belonged to this window
-        // You can scan m_openSessions and remove entries whose widget parent chain includes newWindow
         QList<QString> keysToRemove;
         for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
             QWidget* w = it.value();
@@ -325,7 +328,7 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
         }
     });
 
-    // Update m_openSessions to point to new tab widget's session tab widget
+    // Update m_openSessions for moved tab
     QString sessionPath;
     for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
         if (it.value() == tabInfo.widget) {
@@ -339,6 +342,30 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
     }
 
     qDebug() << "[MainWindow] New detached window shown";
+}
+
+void MainWindow::onTabMoved(QWidget* widget, DraggableTabWidget* oldParent, DraggableTabWidget* newParent)
+{
+    qDebug() << "[MainWindow] Tab moved:" << widget << "from" << oldParent << "to" << newParent;
+
+    // Find session path by widget pointer
+    QString sessionPath;
+    for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
+        if (it.value() == widget) {
+            sessionPath = it.key();
+            break;
+        }
+    }
+
+    if (sessionPath.isEmpty()) {
+        qWarning() << "[MainWindow] onTabMoved: Widget not found in m_openSessions";
+        return;
+    }
+
+    // Update m_openSessions entry to new widget pointer (widget pointer same, but parent changed)
+    m_openSessions[sessionPath] = qobject_cast<SessionTabWidget*>(widget);
+
+    qDebug() << "[MainWindow] Updated m_openSessions for session:" << sessionPath;
 }
 
 void MainWindow::onOpenProject()

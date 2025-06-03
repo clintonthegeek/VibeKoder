@@ -1,7 +1,3 @@
-// draggabletabwidget.cpp
-// Clean, simplified draggable tab widget with detachable tabs and natural Qt ownership.
-// Copyright (c) 2019 Akihito Takeuchi
-// Modified by Clinton Ignatov, 2025 and refactored 2025
 #include "draggabletabwidget.h"
 
 #include <QTabBar>
@@ -14,9 +10,9 @@
 #include <QMainWindow>
 #include <QDebug>
 
-// === DraggableTabBar Implementation ===
+    // === DraggableTabBar Implementation ===
 
-DraggableTabBar::DraggableTabBar(QWidget* parent)
+    DraggableTabBar::DraggableTabBar(QWidget* parent)
     : QTabBar(parent)
 {
     setAcceptDrops(true);
@@ -37,7 +33,7 @@ void DraggableTabBar::mousePressEvent(QMouseEvent* event)
         if (tabWidget && tabWidget->isProjectTab(tabIndex)) {
             m_dragStartPos = -1;
             m_draggedTabIndex = -1;
-            // But allow selection of the Project tab
+            // Allow selection but no drag
             QTabBar::mousePressEvent(event);
             return;
         }
@@ -157,6 +153,8 @@ void DraggableTabBar::dropEvent(QDropEvent* event)
         // Reorder tab within same tab bar
         if (sourceIndex != targetIndex && sourceIndex + 1 != targetIndex) {
             moveTab(sourceIndex, targetIndex > sourceIndex ? targetIndex - 1 : targetIndex);
+            qDebug() << "[DraggableTabBar] Tab reordered within same tab bar from"
+                     << sourceIndex << "to" << targetIndex;
         }
         event->acceptProposedAction();
         return;
@@ -205,6 +203,16 @@ void DraggableTabBar::dropEvent(QDropEvent* event)
     targetTabWidget->setTabToolTip(insertPos, tabToolTip);
     targetTabWidget->setTabWhatsThis(insertPos, tabWhatsThis);
     targetTabWidget->setCurrentIndex(insertPos);
+
+    qDebug() << "[DraggableTabBar] Tab moved from source tab widget" << sourceTabWidget
+             << "to target tab widget" << targetTabWidget
+             << "widget:" << tabPage;
+
+    // Emit tabMoved signal to notify MainWindow
+    emit qobject_cast<DraggableTabWidget*>(targetTabWidget)->tabMoved(
+        tabPage,
+        sourceDraggable,
+        qobject_cast<DraggableTabWidget*>(targetTabWidget));
 
     event->acceptProposedAction();
 }
@@ -338,7 +346,6 @@ QWidget* DraggableTabWidget::createNewWindowWidget(const QRect& winRect, const T
     newTabWidget->setIsMainTabWidget(false);
     newWindow->setCentralWidget(newTabWidget);
 
-    // Reparent the tab widget to the new tab widget
     tabInfo.widget->setParent(newTabWidget);
     newTabWidget->addTab(tabInfo.widget, tabInfo.icon, tabInfo.text);
     newTabWidget->setTabToolTip(0, tabInfo.toolTip);

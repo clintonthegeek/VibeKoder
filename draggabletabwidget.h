@@ -3,6 +3,9 @@
 // Copyright (c) 2019 Akihito Takeuchi
 // Modified by Clinton Ignatov, 2025 and refactored 2025
 
+#ifndef DRAGGABLETABWIDGET_H
+#define DRAGGABLETABWIDGET_H
+
 #pragma once
 
 #include <QTabWidget>
@@ -20,8 +23,8 @@ public:
 
     void setProjectTabWidget(QWidget* projectTab) { m_projectTab = projectTab; }
     QWidget* projectTabWidget() const { return m_projectTab; }
-    bool isProjectTab(int index) const { return widget(index) == m_projectTab; }
 
+    bool isProjectTab(int index) const { return widget(index) == m_projectTab; }
 
     struct TabInfo {
         QWidget* widget = nullptr;
@@ -37,6 +40,9 @@ public:
 signals:
     void createNewWindow(const QRect& winRect, const TabInfo& tabInfo);
     void tabRemoved(QWidget* widget);
+
+    // New signal to notify tab moved between tab widgets
+    void tabMoved(QWidget* widget, DraggableTabWidget* oldParent, DraggableTabWidget* newParent);
 
 private slots:
     void onDetachTabRequested(int index, const QPoint& globalPos);
@@ -69,3 +75,5 @@ private:
     int m_dragStartPos = -1;
     int m_draggedTabIndex = -1;
 };
+
+#endif // DRAGGABLETABWIDGET_H
