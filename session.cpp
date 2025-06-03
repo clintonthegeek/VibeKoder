@@ -797,8 +797,227 @@ QString Session::sessionCacheFolder() const
 }
 
 
+bool Session::parseSessionFile(const QString &data)
+{
+    m_slices.clear();
+    m_metadata.clear();
 
+    // Step 1: Parse YAML-like metadata block at the top (optional)
+    // Format:
+    // ---
+    // key: value
+    // key2: value2
+    // ---
+    // (then the rest)
 
+    int pos = 0;
+    QString trimmedData = data.trimmed();
+
+    if (trimmedData.startsWith("---")) {
+        int metaStart = data.indexOf("---", pos);
+        if (metaStart == -1)
+            return false; // malformed
+
+        int metaEnd = data.indexOf("\n---", metaStart + 3);
+        if (metaEnd == -1)
+            metaEnd = data.indexOf("\r\n---", metaStart + 3);
+        if (metaEnd == -1) {
+            // Try just "---" on a line by itself
+            QRegularExpression metaEndRe(R"(^---\s*$)", QRegularExpression::MultilineOption);
+            QRegularExpressionMatch match = metaEndRe.match(data, metaStart + 3);
+            if (match.hasMatch())
+                metaEnd = match.capturedStart(0);
+        }
+
+        if (metaEnd == -1) {
+            // No closing --- found, treat as no metadata block
+            metaEnd = -1;
+        } else {
+            // Extract metadata block text
+            int metaContentStart = metaStart + 3;
+            int metaContentLength = metaEnd - metaContentStart;
+            QString metaBlock = data.mid(metaContentStart, metaContentLength).trimmed();
+
+            // Parse simple key: value lines
+            QTextStream metaStream(&metaBlock);
+            while (!metaStream.atEnd()) {
+                QString line = metaStream.readLine().trimmed();
+                if (line.isEmpty() || line.startsWith("#"))
+                    continue;
+
+                int colonIndex = line.indexOf(':');
+                if (colonIndex == -1)
+                    continue; // skip malformed
+
+                QString key = line.left(colonIndex).trimmed();
+                QString value = line.mid(colonIndex + 1).trimmed();
+
+                // Remove optional quotes around value
+                if ((value.startsWith('"') && value.endsWith('"')) ||
+                    (value.startsWith('\'') && value.endsWith('\''))) {
+                    value = value.mid(1, value.length() - 2);
+                }
+
+                m_metadata.insert(key, value);
+            }
+
+            pos = metaEnd + 3; // move past closing ---
+        }
+    }
+
+    // Step 2: Parse slices separated by delimiter lines
+    // Delimiter line format:
+    // =={ Role | yyyy-MM-dd HH:mm:ss }==
+    // or
+    // =={ Role }==  (timestamp missing, add current time)
+
+    // We'll parse line by line, detecting delimiter lines outside fenced code blocks.
+
+    // Regex for delimiter line:
+    static const QRegularExpression delimiterRe(
+        R"(^==\{\s*(System|User|Assistant)\s*(?:\|\s*([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}))?\s*\}==\s*$)",
+        QRegularExpression::CaseInsensitiveOption);
+
+    // We'll split data into lines starting from pos
+    QStringList lines = data.mid(pos).split(QRegularExpression("[\r\n]"), Qt::SkipEmptyParts);
+
+    // We need to track fenced code blocks to ignore delimiter lines inside them
+    bool inFence = false;
+    QString fenceMarker; // e.g. ``` or ~~~
+
+    QVector<PromptSlice> slices;
+    QString currentRole;
+    QString currentTimestamp;
+    QStringList currentContentLines;
+
+    auto addSlice = [&]() {
+        if (currentRole.isEmpty())
+            return; // no slice to add
+
+        QString content = currentContentLines.join("\n").trimmed();
+
+        // If timestamp missing, add current time
+        if (currentTimestamp.isEmpty()) {
+            currentTimestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        MessageRole role = MessageRole::User;
+        QString roleLower = currentRole.toLower();
+        if (roleLower == "system")
+            role = MessageRole::System;
+        else if (roleLower == "assistant")
+            role = MessageRole::Assistant;
+        else if (roleLower == "user")
+            role = MessageRole::User;
+
+        slices.append({role, content, currentTimestamp});
+
+        currentRole.clear();
+        currentTimestamp.clear();
+        currentContentLines.clear();
+    };
+
+    for (int i = 0; i < lines.size(); ++i) {
+        QString line = lines[i];
+
+        // Detect fenced code block start/end
+        // Fence start: line starts with at least 3 backticks or tildes
+        QRegularExpression fenceStartRe(R"(^([`~]{3,}).*)");
+        QRegularExpressionMatch fenceMatch = fenceStartRe.match(line);
+
+        if (fenceMatch.hasMatch()) {
+            QString fence = fenceMatch.captured(1);
+            if (!inFence) {
+                inFence = true;
+                fenceMarker = fence;
+            } else {
+                // Only close fence if matches opening fence exactly
+                if (line.startsWith(fenceMarker)) {
+                    inFence = false;
+                    fenceMarker.clear();
+                }
+            }
+            currentContentLines.append(line);
+            continue;
+        }
+
+        if (!inFence) {
+            // Check if line is delimiter line
+            QRegularExpressionMatch delimMatch = delimiterRe.match(line);
+            if (delimMatch.hasMatch()) {
+                // If we have a current slice, add it before starting new one
+                addSlice();
+
+                currentRole = delimMatch.captured(1);
+                currentTimestamp = delimMatch.captured(2); // may be empty
+                continue; // delimiter line not part of content
+            }
+        }
+
+        // Otherwise, add line to current content
+        currentContentLines.append(line);
+    }
+
+    // Add last slice if any
+    addSlice();
+
+    if (slices.isEmpty()) {
+        qWarning() << "No prompt slices found in session file.";
+        return false;
+    }
+
+    m_slices = slices;
+
+    return true;
+}
+
+QString Session::serializeSessionFile() const
+{
+    QString result;
+
+    // Step 1: Serialize metadata block if any
+    if (!m_metadata.isEmpty()) {
+        result += "---\n";
+        for (auto it = m_metadata.constBegin(); it != m_metadata.constEnd(); ++it) {
+            // Serialize as key: value
+            QString key = it.key();
+            QString val = it.value().toString();
+
+            // Escape value if contains spaces or special chars
+            if (val.contains(QRegExp(R"(\s)")) || val.contains(":")) {
+                val = "\"" + val.replace("\"", "\\\"") + "\"";
+            }
+
+            result += QString("%1: %2\n").arg(key, val);
+        }
+        result += "---\n\n";
+    }
+
+    // Step 2: Serialize slices with delimiter lines and content
+
+    for (const PromptSlice &slice : m_slices) {
+        QString roleStr;
+        switch (slice.role) {
+        case MessageRole::User: roleStr = "User"; break;
+        case MessageRole::Assistant: roleStr = "Assistant"; break;
+        case MessageRole::System: roleStr = "System"; break;
+        }
+
+        QString timestampStr = slice.timestamp;
+        if (timestampStr.isEmpty()) {
+            timestampStr = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+        }
+
+        // Delimiter line
+        result += QString("=={ %1 | %2 }==\n").arg(roleStr, timestampStr);
+
+        // Slice content verbatim
+        result += slice.content;
+        result += "\n\n";
+    }
+
+    return result.trimmed();
+}
 
 
 

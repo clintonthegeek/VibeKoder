@@ -5,6 +5,8 @@
 #include <QVector>
 #include <QMap>
 #include <QSet>
+#include <QVariantMap>
+
 
 enum class MessageRole {
     User,
@@ -67,6 +69,9 @@ private:
     QVector<PromptSlice> m_slices;
     QMap<QString, QString> m_commandPipeOutputs;
 
+    bool parseSessionFile(const QString &data);
+    QString serializeSessionFile() const;
+
     // Internal helper to recursively expand includes in content
     // Updated expandIncludesRecursive with additional parameter for header level context
     QString expandIncludesRecursive(const QString &content,
@@ -91,7 +96,7 @@ private:
     QString sessionDocCacheFolder() const;
     QString sessionSrcCacheFolder() const;
     QString sessionCacheBaseFolder() const;
-
+    QVariantMap m_metadata;
 };
 
 #endif // SESSION_H
