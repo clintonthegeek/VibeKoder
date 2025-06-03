@@ -30,6 +30,7 @@ private slots:
 
     void onTabRemovedFromWidget(DraggableTabWidget* tabWidget, int index, QWidget* widget);
 
+    void onTabRemoved(QWidget* widget);
 
 private:
     void setupUi();
