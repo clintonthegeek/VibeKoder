@@ -45,6 +45,8 @@ else()
             openai_request.cpp openai_request.h
             sessiontabwidget.h sessiontabwidget.cpp
             commandpipemanager.h commandpipemanager.cpp
+            draggabletabwidget.cpp
+            draggabletabwidget.h
         )
     endif()
 endif()
