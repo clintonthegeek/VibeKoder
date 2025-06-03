@@ -578,57 +578,6 @@ void Session::appendAssistantSlice(const QString &markdownContent)
     m_slices.append({MessageRole::Assistant, markdownContent, timestamp});
 }
 
-bool Session::parseSessionMarkdown(const QString &data)
-{
-    // Expect pattern:
-    // ### Role (optional timestamp)
-    // ```
-    // markdown fenced block follows
-    // ```
-    // Repeated.
-
-    static QRegularExpression headerRe(R"(#\s*(User|Assistant|System)(?:\s*\((.*?)\))?\s*)");
-    static QRegularExpression fenceRe(R"(```markdown\s*([\s\S]*?)```)", QRegularExpression::MultilineOption);
-
-    int pos = 0;
-    int len = data.length();
-
-    m_slices.clear();
-
-    while (pos < len) {
-        QRegularExpressionMatch headerMatch = headerRe.match(data, pos);
-        if (!headerMatch.hasMatch()) {
-            break;
-        }
-
-        QString roleStr = headerMatch.captured(1);
-        QString timestamp = headerMatch.captured(2);
-
-        MessageRole role = MessageRole::User;
-        if (roleStr == "Assistant")
-            role = MessageRole::Assistant;
-        else if (roleStr == "System")
-            role = MessageRole::System;
-
-        int afterHeaderPos = headerMatch.capturedEnd(0);
-
-        QRegularExpressionMatch fenceMatch = fenceRe.match(data, afterHeaderPos);
-
-        if (!fenceMatch.hasMatch()) {
-            qWarning() << "Failed to find fenced markdown block after header at" << afterHeaderPos;
-            return false;
-        }
-
-        QString content = fenceMatch.captured(1);
-
-        m_slices.append({role, content, timestamp});
-
-        pos = fenceMatch.capturedEnd(0);
-    }
-
-    return true;
-}
-
 void Session::setCommandPipeOutput(const QString &key, const QString &output)
 {
     m_commandPipeOutputs[key] = output;
@@ -638,25 +587,6 @@ QString Session::commandPipeOutput(const QString &key) const
 {
     return m_commandPipeOutputs.value(key, QString());
 }
-
-
-
-// Find maximum continuous backtick sequence in the entire text
-static int maxBacktickRun(const QString &text)
-{
-    static QRegularExpression regex(R"(`+)");
-    QRegularExpressionMatchIterator i = regex.globalMatch(text);
-
-    int maxRun = 0;
-    while (i.hasNext()) {
-        auto match = i.next();
-        int length = match.capturedLength();
-        if (length > maxRun)
-            maxRun = length;
-    }
-    return maxRun;
-}
-
 
 QString Session::compiledRawMarkdown() const
 {

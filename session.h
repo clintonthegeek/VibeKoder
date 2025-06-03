@@ -51,9 +51,6 @@ public:
     QString promptSliceContent(int index) const;
     void setPromptSliceContent(int index, const QString &content);
 
-    // Parse markdown session data into slices (public for your editor save slot)
-    bool parseSessionMarkdown(const QString &data);
-
     // Compile the prompt into a single markdown string expanded with recursive includes
     // Command pipe tokens (@diff etc.) remain as-is.
     QString compilePrompt();
