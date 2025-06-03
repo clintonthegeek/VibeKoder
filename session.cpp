@@ -210,8 +210,6 @@ QString Session::cacheIncludesInContent(const QString &content)
         else if (relPath.startsWith(srcFolderName + "/") || relPath.startsWith(srcFolderName + "\\"))
             relPath = relPath.mid(srcFolderName.length() + 1);
 
-        qDebug() << "[cacheIncludesInContent] relPath after prefix removal =" << relPath;
-
         // Determine cache base folder (docs cache or src cache)
         QString cacheBaseFolder;
         const QString ext = QFileInfo(relPath).suffix().toLower();
@@ -234,9 +232,7 @@ QString Session::cacheIncludesInContent(const QString &content)
             relativeCachedPath = relativeCachedPath.mid(2);
 
         // Replacement marker: cached include
-        qDebug() << "[cacheIncludesInContent] relativeCachedPath =" << relativeCachedPath;
         QString replacement = QString("<!-- cached: %1 -->").arg(relativeCachedPath);
-        qDebug() << "[cacheIncludesInContent] replacement string =" << replacement;
 
         // Replace include marker in content
         int start = m.capturedStart(0);
@@ -337,9 +333,6 @@ QString Session::expandIncludesRecursive(const QString &content,
 
         QString markerType = m.captured(1).toLower();
         QString includePath = m.captured(2).trimmed();
-
-        qDebug() << "[expandIncludesRecursive] markerType:" << markerType << ", includePath:" << includePath;
-
 
         // Avoid infinite recursion by skipping if already visited this exact file path
         QString absPath;
@@ -463,21 +456,18 @@ QVector<PromptSlice> Session::slices() const
 
 void Session::appendSystemSlice(const QString &markdownContent)
 {
-    qDebug() << "[appendSystemSlice] content preview:\n" << markdownContent.left(200).replace('\n', "\\n");
     QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
     m_slices.append({MessageRole::System, markdownContent, timestamp});
 }
 
 void Session::appendUserSlice(const QString &markdownContent)
 {
-    qDebug() << "[appendUserSlice] content preview:\n" << markdownContent.left(200).replace('\n', "\\n");
     QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
     m_slices.append({MessageRole::User, markdownContent, timestamp});
 }
 
 void Session::appendAssistantSlice(const QString &markdownContent)
 {
-    qDebug() << "[appendAssistantSlice] content preview:\n" << markdownContent.left(200).replace('\n', "\\n");
     QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
     m_slices.append({MessageRole::Assistant, markdownContent, timestamp});
 }
@@ -677,8 +667,6 @@ bool Session::parseSessionFile(const QString &data)
             while (pos < data.length() && (data[pos] == '\n' || data[pos] == '\r')) {
                 ++pos;
             }
-            qDebug() << "[parseSessionFile] Position after metadata block:" << pos
-                     << "next chars:" << data.mid(pos, 20).replace('\n', "\\n");
         }
     }
     // Step 2: Parse slices separated by delimiter lines
@@ -710,29 +698,14 @@ bool Session::parseSessionFile(const QString &data)
         if (currentRole.isEmpty())
             return;
 
-        // Debug: Log all raw lines for the slice
-        qDebug() << "[parseSessionFile] Raw lines for slice role:" << currentRole;
-        qDebug() << "[parseSessionFile] Total raw lines:" << currentContentLines.size();
         for (int i = 0; i < currentContentLines.size(); ++i) {
             QString line = currentContentLines[i];
             if (line.length() > 120) {
                 line = line.left(120) + "...";
             }
-            qDebug() << "[parseSessionFile] Line" << i << ":" << line;
         }
 
         QString content = currentContentLines.join("\n");
-
-        // Debug: Log the joined content before any processing
-        qDebug() << "[parseSessionFile] Joined content preview (before cleanup):\n"
-                 << content.left(200).replace('\n', "\\n");
-
-        // Clean up leading dash lines and empty lines
-        //content = removeLeadingDashLines(content);
-
-        // Debug: Log the cleaned content
-        qDebug() << "[parseSessionFile] Cleaned content preview:\n"
-                 << content.left(200).replace('\n', "\\n");
 
         // If timestamp missing, add current time
         if (currentTimestamp.isEmpty()) {
@@ -747,10 +720,6 @@ bool Session::parseSessionFile(const QString &data)
             role = MessageRole::Assistant;
         else if (roleLower == "user")
             role = MessageRole::User;
-
-        qDebug() << "[parseSessionFile] Adding slice role:" << currentRole
-                 << "timestamp:" << currentTimestamp
-                 << "content preview:\n" << content.left(200).replace('\n', "\\n");
 
         slices.append({role, content, currentTimestamp});
 
@@ -849,11 +818,6 @@ QString Session::serializeSessionFile() const
         if (timestampStr.isEmpty()) {
             timestampStr = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
         }
-
-
-        qDebug() << "[serializeSessionFile] Writing slice role:" << roleStr
-                 << "timestamp:" << timestampStr
-                 << "content preview:\n" << slice.content.left(200).replace('\n', "\\n");
 
         // Delimiter line
         result += QString("=={ %1 | %2 }==\n").arg(roleStr, timestampStr);
