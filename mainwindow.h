@@ -28,6 +28,9 @@ private slots:
     void onCreateSessionFromTemplate();
     void onOpenSelectedSession();
 
+    void onTabRemovedFromWidget(DraggableTabWidget* tabWidget, int index, QWidget* widget);
+
+
 private:
     void setupUi();
     void loadProjectDataToUi();
@@ -56,6 +59,10 @@ private:
     OpenAIRequest* m_openAIRequest = nullptr;
     QMap<QString, SessionTabWidget*> m_pendingSessions;
     QList<QMainWindow*> m_detachedWindows;
+
+    void setupTabWidgetConnections(DraggableTabWidget* tabWidget);
+    QSet<QWidget*> m_detachingWidgets;
+
 
 
 };
