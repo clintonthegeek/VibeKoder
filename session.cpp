@@ -61,8 +61,9 @@ bool Session::load(const QString &filepath)
     QString data = in.readAll();
 
     m_slices.clear();
+    m_metadata.clear();
 
-    return parseSessionMarkdown(data);
+    return parseSessionFile(data);
 }
 
 bool Session::refreshCacheAndSave()
@@ -100,7 +101,7 @@ bool Session::save(const QString &filepath)
 
     QTextStream out(&file);
 
-    out << compiledRawMarkdown();
+    out << serializeSessionFile();
 
     file.flush();
 
