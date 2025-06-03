@@ -15,15 +15,14 @@ public:
     explicit DraggableTabWidget(QWidget* parent = nullptr);
     ~DraggableTabWidget();
 
-    // Mark this tab widget as the main tab widget (usually in MainWindow)
     void setIsMainTabWidget(bool isMain) { m_isMainTabWidget = isMain; }
     bool isMainTabWidget() const { return m_isMainTabWidget; }
 
-    // Set the special Project tab widget to disallow dragging/closing it
     void setProjectTabWidget(QWidget* projectTab) { m_projectTab = projectTab; }
     QWidget* projectTabWidget() const { return m_projectTab; }
+    bool isProjectTab(int index) const { return widget(index) == m_projectTab; }
 
-    // Struct to hold tab info when detaching or creating new windows
+
     struct TabInfo {
         QWidget* widget = nullptr;
         QString text;
@@ -32,21 +31,15 @@ public:
         QString whatsThis;
     };
 
-    // Helper to create a new window with a single tab from TabInfo
     QWidget* createNewWindowWidget(const QRect& winRect, const TabInfo& tabInfo);
-    // Override removeTab to emit tabRemoved signal
     void removeTab(int index);
 
 signals:
-    // Emitted when a tab is dragged outside any tab bar and needs a new window
     void createNewWindow(const QRect& winRect, const TabInfo& tabInfo);
-    // New signal: emitted whenever a tab widget is removed (closed or dragged away)
     void tabRemoved(QWidget* widget);
-private slots:
-    // Slot to handle detach requests from the tab bar
-    void onDetachTabRequested(int index, const QPoint& globalPos);
 
-    // Slot to handle tab close requests
+private slots:
+    void onDetachTabRequested(int index, const QPoint& globalPos);
     void onTabCloseRequested(int index);
 
 private:
@@ -54,7 +47,6 @@ private:
     QWidget* m_projectTab = nullptr;
 };
 
-// Forward declaration of DraggableTabBar (internal use)
 class DraggableTabBar : public QTabBar {
     Q_OBJECT
 public:

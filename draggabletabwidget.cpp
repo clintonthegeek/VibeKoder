@@ -2,7 +2,6 @@
 // Clean, simplified draggable tab widget with detachable tabs and natural Qt ownership.
 // Copyright (c) 2019 Akihito Takeuchi
 // Modified by Clinton Ignatov, 2025 and refactored 2025
-
 #include "draggabletabwidget.h"
 
 #include <QTabBar>
@@ -15,13 +14,13 @@
 #include <QMainWindow>
 #include <QDebug>
 
-// =================== DraggableTabBar Implementation ===================
+// === DraggableTabBar Implementation ===
 
 DraggableTabBar::DraggableTabBar(QWidget* parent)
     : QTabBar(parent)
 {
     setAcceptDrops(true);
-    setMovable(true); // Enable built-in tab reordering within this tab bar
+    setMovable(true);
 }
 
 void DraggableTabBar::mousePressEvent(QMouseEvent* event)
@@ -33,12 +32,13 @@ void DraggableTabBar::mousePressEvent(QMouseEvent* event)
             return;
         }
 
-        // Prevent dragging the Project tab by checking parent DraggableTabWidget's projectTabWidget
+        // Prevent dragging Project tab
         auto tabWidget = qobject_cast<DraggableTabWidget*>(parentWidget());
-        if (tabWidget && tabWidget->projectTabWidget() == tabWidget->widget(tabIndex)) {
-            // Disallow dragging Project tab
+        if (tabWidget && tabWidget->isProjectTab(tabIndex)) {
             m_dragStartPos = -1;
             m_draggedTabIndex = -1;
+            // But allow selection of the Project tab
+            QTabBar::mousePressEvent(event);
             return;
         }
 
@@ -93,7 +93,15 @@ void DraggableTabBar::mouseMoveEvent(QMouseEvent* event)
             return;
         }
 
-        // Otherwise, emit detachTabRequested to create new window
+        // Prevent detaching Project tab
+        if (tabWidget->isProjectTab(m_draggedTabIndex)) {
+            QApplication::beep();
+            m_draggedTabIndex = -1;
+            m_dragStartPos = -1;
+            return;
+        }
+
+        // Emit detachTabRequested to create new window
         QPoint globalPos = mapToGlobal(event->pos());
         emit detachTabRequested(m_draggedTabIndex, globalPos);
     }
@@ -168,6 +176,15 @@ void DraggableTabBar::dropEvent(QDropEvent* event)
         return;
     }
 
+    // Prevent moving Project tab out of main tab widget
+    DraggableTabWidget* sourceDraggable = qobject_cast<DraggableTabWidget*>(sourceTabWidget);
+    DraggableTabWidget* targetDraggable = qobject_cast<DraggableTabWidget*>(targetTabWidget);
+    if (sourceDraggable && sourceDraggable->isProjectTab(sourceIndex)) {
+        QApplication::beep();
+        event->ignore();
+        return;
+    }
+
     QString tabText = sourceTabBar->tabText(sourceIndex);
     QIcon tabIcon = sourceTabBar->tabIcon(sourceIndex);
     QString tabToolTip = sourceTabBar->tabToolTip(sourceIndex);
@@ -216,7 +233,7 @@ QPixmap DraggableTabBar::createDragPixmap(int index) const
     return pixmap;
 }
 
-// =================== DraggableTabWidget Implementation ===================
+// === DraggableTabWidget Implementation ===
 
 DraggableTabWidget::DraggableTabWidget(QWidget* parent)
     : QTabWidget(parent)
@@ -228,7 +245,6 @@ DraggableTabWidget::DraggableTabWidget(QWidget* parent)
     setMovable(true);
     setTabsClosable(true);
 
-    // Connect signals
     connect(tabBar, &DraggableTabBar::detachTabRequested, this, &DraggableTabWidget::onDetachTabRequested);
     connect(this, &QTabWidget::tabCloseRequested, this, &DraggableTabWidget::onTabCloseRequested);
 }
@@ -247,63 +263,66 @@ void DraggableTabWidget::onDetachTabRequested(int index, const QPoint& globalPos
     if (!page)
         return;
 
-    // Prevent detaching the Project tab
-    if (page == m_projectTab)
-        return;
+    if (page == m_projectTab) {
+        qDebug() << "[DraggableTabWidget] Detach requested on Project tab - ignored";
+        return; // Disallow detaching Project tab
+    }
 
-    QString text = tabText(index);
-    QIcon icon = tabIcon(index);
-    QString toolTip = tabToolTip(index);
-    QString whatsThis = tabWhatsThis(index);
+    qDebug() << "[DraggableTabWidget] Detach requested for tab index:" << index << "widget:" << page;
 
-    // Prepare tab info
     TabInfo tabInfo;
     tabInfo.widget = page;
-    tabInfo.text = text;
-    tabInfo.icon = icon;
-    tabInfo.toolTip = toolTip;
-    tabInfo.whatsThis = whatsThis;
+    tabInfo.text = tabText(index);
+    tabInfo.icon = tabIcon(index);
+    tabInfo.toolTip = tabToolTip(index);
+    tabInfo.whatsThis = tabWhatsThis(index);
 
-    // Emit signal to create new window with this tab
     emit createNewWindow(QRect(globalPos, QSize(600, 400)), tabInfo);
 
-    // Remove tab from this widget, but do NOT delete widget (ownership transferred)
     removeTab(index);
 
-    // If empty and not main, close window
     if (count() == 0 && !m_isMainTabWidget) {
         QWidget* w = window();
-        if (w)
+        if (w) {
+            qDebug() << "[DraggableTabWidget] No tabs left after detach, closing window:" << w;
             w->close();
+        }
     }
 }
 
 void DraggableTabWidget::onTabCloseRequested(int index)
 {
+    if (index < 0 || index >= count())
+        return;
+
     QWidget* page = widget(index);
     if (!page)
         return;
 
-    // Prevent closing Project tab
-    if (page == m_projectTab)
-        return;
+    if (page == m_projectTab) {
+        qDebug() << "[DraggableTabWidget] Close requested on Project tab - ignored";
+        return; // Disallow closing Project tab
+    }
+
+    qDebug() << "[DraggableTabWidget] Close requested for tab index:" << index << "widget:" << page;
 
     removeTab(index);
 
-    // Delete widget after tab removed
     page->deleteLater();
 
-    // Close window if empty and not main
     if (count() == 0 && !m_isMainTabWidget) {
         QWidget* w = window();
-        if (w)
+        if (w) {
+            qDebug() << "[DraggableTabWidget] No tabs left after close, closing window:" << w;
             w->close();
+        }
     }
 }
 
 void DraggableTabWidget::removeTab(int index)
 {
     QWidget* widget = this->widget(index);
+    qDebug() << "[DraggableTabWidget] removeTab called for index:" << index << "widget:" << widget;
     QTabWidget::removeTab(index);
     if (widget) {
         emit tabRemoved(widget);
@@ -331,5 +350,3 @@ QWidget* DraggableTabWidget::createNewWindowWidget(const QRect& winRect, const T
 
     return newWindow;
 }
-
-#include "draggabletabwidget.moc"

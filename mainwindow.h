@@ -61,6 +61,8 @@ private:
     QMap<QString, SessionTabWidget*> m_pendingSessions;
 
     void setupTabWidgetConnections(DraggableTabWidget* tabWidget);
+    void dumpOpenSessions() const;
+
 
 
 

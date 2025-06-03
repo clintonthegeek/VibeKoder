@@ -47,6 +47,7 @@ else()
             commandpipemanager.h commandpipemanager.cpp
             draggabletabwidget.cpp
             draggabletabwidget.h
+            detachedwindow.h detachedwindow.cpp
         )
     endif()
 endif()

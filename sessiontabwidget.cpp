@@ -17,6 +17,7 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     if (!m_session.load(m_sessionFilePath)) {
         qWarning() << "Failed loading session file " << m_sessionFilePath;
     }
+        qDebug() << "[SessionTabWidget] Constructor for session:" << sessionPath << "Widget:" << this;
 
     // Setup OpenAI connections
     m_openAIRequest = new OpenAIRequest(this);
@@ -91,9 +92,7 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 
 SessionTabWidget::~SessionTabWidget()
 {
-    // Cleanup if needed
-    qDebug() << "[SessionTabWidget] Destructor called for" << this << "path:" << m_sessionFilePath;
-
+    qDebug() << "[SessionTabWidget] Destructor for session:" << m_sessionFilePath << "Widget:" << this;
 }
 
 void SessionTabWidget::loadSession()
