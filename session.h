@@ -7,6 +7,7 @@
 #include <QSet>
 #include <QVariantMap>
 
+#include "commandpipemanager.h"  // Add this include
 
 enum class MessageRole {
     User,
@@ -30,11 +31,14 @@ class Session
 {
 public:
     explicit Session(Project *project = nullptr);
+    ~Session();
 
     bool load(const QString &filepath);
     bool save(const QString &filepath = QString());
     bool refreshCacheAndSave();
 
+    // New method for running command pipes
+    bool runCommandPipes();
 
     // Accessors
     QVector<PromptSlice> slices() const;
@@ -71,14 +75,11 @@ private:
     QString serializeSessionFile() const;
 
     // Internal helper to recursively expand includes in content
-    // Updated expandIncludesRecursive with additional parameter for header level context
     QString expandIncludesRecursive(const QString &content,
-                                             QSet<QString> &visitedFiles,
-                                             bool expandIncludeMarkers);
+                                    QSet<QString> &visitedFiles,
+                                    bool expandIncludeMarkers = true);
 
     QString expandIncludesOnce(const QString &content);
-
-
 
     QString cacheIncludesInContent(const QString& content);
     QString sessionFolder() const;
@@ -87,6 +88,9 @@ private:
     QString sessionSrcCacheFolder() const;
     QString sessionCacheBaseFolder() const;
     QVariantMap m_metadata;
+
+    // Command pipe manager instance
+    CommandPipeManager* m_commandPipeManager = nullptr;
 };
 
 #endif // SESSION_H

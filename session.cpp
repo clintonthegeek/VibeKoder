@@ -1,5 +1,7 @@
 #include "session.h"
 #include "project.h"
+#include "commandpipemanager.h"  // Include CommandPipeManager
+
 #include <QFile>
 #include <QFileInfo>
 #include <QTextStream>
@@ -47,6 +49,79 @@ Session::Session(Project *project)
 {
 }
 
+Session::~Session()
+{
+    delete m_commandPipeManager;
+    m_commandPipeManager = nullptr;
+
+}
+
+bool Session::runCommandPipes()
+{
+    if (!m_commandPipeManager) {
+        qWarning() << "[Session::runCommandPipes] CommandPipeManager not initialized";
+        return false;
+    }
+
+    bool modified = false;
+
+    // Regex to find command pipe markers: <!-- command: name -->
+    static const QRegularExpression commandRe(R"(<!--\s*command:\s*(\S+)\s*-->)", QRegularExpression::CaseInsensitiveOption);
+
+    for (int i = 0; i < m_slices.size(); ++i) {
+        QString content = m_slices[i].content;
+        int offset = 0;
+
+        while (true) {
+            QRegularExpressionMatch match = commandRe.match(content, offset);
+            if (!match.hasMatch())
+                break;
+
+            QString commandName = match.captured(1).trimmed();
+
+            qDebug() << "[Session::runCommandPipes] Found command pipe:" << commandName << "in slice" << i;
+
+            QString error = m_commandPipeManager->runCommandPipe(commandName);
+
+            if (!error.isEmpty()) {
+                qWarning() << "[Session::runCommandPipes] Command pipe" << commandName << "failed:" << error;
+                return false; // fail on first error
+            }
+
+            // Replace command marker with corresponding cached include marker
+            QString replacement;
+
+            if (commandName == "amalgamateSrc") {
+                replacement = "<!-- cached: src/src.txt -->";
+            } else {
+                // For unknown commands, just remove the command marker
+                replacement = "";
+            }
+
+            int start = match.capturedStart(0);
+            int length = match.capturedLength(0);
+            content.replace(start, length, replacement);
+
+            offset = start + replacement.length();
+            modified = true;
+        }
+
+        if (modified) {
+            m_slices[i].content = content;
+        }
+    }
+
+    if (modified) {
+        // Save updated session file with replaced command pipes
+        if (!save()) {
+            qWarning() << "[Session::runCommandPipes] Failed to save session after running command pipes";
+            return false;
+        }
+    }
+
+    return true;
+}
+
 bool Session::load(const QString &filepath)
 {
     QFile file(filepath);
@@ -63,7 +138,21 @@ bool Session::load(const QString &filepath)
     m_slices.clear();
     m_metadata.clear();
 
-    return parseSessionFile(data);
+    bool ok = parseSessionFile(data);
+    if (!ok)
+        return false;
+
+    // Initialize or update CommandPipeManager with correct session cache folder
+    if (m_commandPipeManager) {
+        delete m_commandPipeManager;
+        m_commandPipeManager = nullptr;
+    }
+
+    QString absCacheFolder = sessionCacheBaseFolder();
+    qDebug() << "[Session::load] Initializing CommandPipeManager with cache folder:" << absCacheFolder;
+    m_commandPipeManager = new CommandPipeManager(m_project, absCacheFolder);
+
+    return true;
 }
 
 bool Session::refreshCacheAndSave()
@@ -119,11 +208,16 @@ QString Session::sessionCacheBaseFolder() const
     QFileInfo fi(m_filepath);
     QString baseName = fi.completeBaseName(); // e.g., "001"
     QDir sessionsDir = fi.dir();
+
     QString cacheFolderPath = sessionsDir.filePath(baseName);
-    if (!QDir(cacheFolderPath).exists()) {
+
+    // Make sure this is absolute and normalized
+    QDir cacheDir(cacheFolderPath);
+    if (!cacheDir.exists()) {
         QDir().mkpath(cacheFolderPath);
     }
-    return cacheFolderPath;
+
+    return cacheDir.absolutePath();  // Return absolute path here
 }
 
 QString Session::sessionDocCacheFolder() const
@@ -153,8 +247,7 @@ QString Session::cacheIncludesInContent(const QString &content)
     }
 
     QString projectRoot = m_project->rootFolder();
-    QString docCacheRoot = sessionDocCacheFolder();
-    QString srcCacheRoot = sessionSrcCacheFolder();
+    QString sessionCacheRoot = sessionCacheBaseFolder();
 
     static const QRegularExpression markerRe(R"(<!--\s*(include):\s*(.*?)\s*-->)", QRegularExpression::CaseInsensitiveOption);
 
@@ -164,7 +257,6 @@ QString Session::cacheIncludesInContent(const QString &content)
         if (!m.hasMatch())
             break;
 
-        // We only match "include", never "cached" here
         QString fullMatch = m.captured(0);
         QString includePath = m.captured(2).trimmed();
 
@@ -177,69 +269,87 @@ QString Session::cacheIncludesInContent(const QString &content)
         if (fi.isAbsolute()) {
             absSrcFile = includePath;
         } else {
-            if (includePath.contains('/') || includePath.contains('\\')) {
-                absSrcFile = QDir(projectRoot).filePath(includePath);
-            } else {
+            // If includePath starts with a known folder prefix, resolve relative to project root
+            // Else, fallback to docs or src folder heuristics
+
+            QStringList knownPrefixes = {
+                QFileInfo(m_project->docsFolder()).fileName(),
+                QFileInfo(m_project->srcFolder()).fileName(),
+                QFileInfo(m_project->sessionsFolder()).fileName(),
+                QFileInfo(m_project->templatesFolder()).fileName()
+            };
+
+            bool hasKnownPrefix = false;
+            for (const QString &prefix : knownPrefixes) {
+                if (includePath.startsWith(prefix + "/") || includePath.startsWith(prefix + "\\")) {
+                    absSrcFile = QDir(projectRoot).filePath(includePath);
+                    hasKnownPrefix = true;
+                    break;
+                }
+            }
+
+            if (!hasKnownPrefix) {
+                // Fallback heuristic: if extension is source code, use src folder, else docs folder
                 const QString suffix = QFileInfo(includePath).suffix().toLower();
-                if (suffix == "h" || suffix == "cpp" || suffix == "hpp")
+                if (suffix == "h" || suffix == "cpp" || suffix == "hpp" || suffix == "ui" || suffix == "txt") {
                     absSrcFile = QDir(m_project->srcFolder()).filePath(includePath);
-                else
+                } else {
                     absSrcFile = QDir(m_project->docsFolder()).filePath(includePath);
+                }
             }
         }
 
         QFileInfo absFi(absSrcFile);
         if (!absFi.exists() || !absFi.isFile()) {
             qWarning() << "[cacheIncludesInContent] Source file missing:" << absSrcFile;
-            // Do not replace the marker — move forward to avoid infinite loop
             offset = m.capturedEnd(0);
             continue;
         }
 
-        // Compute relative path inside cache folder (remove leading docs/src folder names)
+        // Compute relative path inside cache folder preserving folder prefix
+        // For example, if includePath is "docs/Vision.md", cache to sessionCache/docs/Vision.md
+        // So relPath = includePath itself (normalized)
+
         QString relPath = includePath;
-        const QString docsFolderName = QFileInfo(m_project->docsFolder()).fileName();
-        const QString srcFolderName = QFileInfo(m_project->srcFolder()).fileName();
+        relPath = QDir::cleanPath(relPath);
 
-        qDebug() << "[cacheIncludesInContent] includePath =" << includePath;
-        qDebug() << "[cacheIncludesInContent] docsFolderName =" << docsFolderName;
-        qDebug() << "[cacheIncludesInContent] srcFolderName =" << srcFolderName;
+        // Determine cache destination path inside session cache folder
+        QString cacheDestPath = QDir(sessionCacheRoot).filePath(relPath);
 
-        if (relPath.startsWith(docsFolderName + "/") || relPath.startsWith(docsFolderName + "\\"))
-            relPath = relPath.mid(docsFolderName.length() + 1);
-        else if (relPath.startsWith(srcFolderName + "/") || relPath.startsWith(srcFolderName + "\\"))
-            relPath = relPath.mid(srcFolderName.length() + 1);
+        // Ensure cache destination directory exists
+        QFileInfo cacheDestInfo(cacheDestPath);
+        QDir cacheDestDir = cacheDestInfo.dir();
+        if (!cacheDestDir.exists()) {
+            if (!cacheDestDir.mkpath(".")) {
+                qWarning() << "[cacheIncludesInContent] Failed to create cache directory:" << cacheDestDir.absolutePath();
+                offset = m.capturedEnd(0);
+                continue;
+            }
+        }
 
-        // Determine cache base folder (docs cache or src cache)
-        QString cacheBaseFolder;
-        const QString ext = QFileInfo(relPath).suffix().toLower();
-        if (ext == "h" || ext == "cpp" || ext == "hpp")
-            cacheBaseFolder = srcCacheRoot;
-        else
-            cacheBaseFolder = docCacheRoot;
-
-        // Copy file to cache folder (overwrite)
-        if (!copyFileToCacheFolder(absSrcFile, cacheBaseFolder, relPath)) {
-            qWarning() << "[cacheIncludesInContent] Failed to cache file:" << absSrcFile;
+        // Copy source file to cache destination (overwrite)
+        if (QFile::exists(cacheDestPath)) {
+            if (!QFile::remove(cacheDestPath)) {
+                qWarning() << "[cacheIncludesInContent] Cannot remove existing cached file:" << cacheDestPath;
+                offset = m.capturedEnd(0);
+                continue;
+            }
+        }
+        if (!QFile::copy(absSrcFile, cacheDestPath)) {
+            qWarning() << "[cacheIncludesInContent] Failed copying source file to cache:" << absSrcFile << "->" << cacheDestPath;
             offset = m.capturedEnd(0);
             continue;
         }
 
-        // Compute relative path from session folder to cached file for replacement
-        QString cachedAbsolutePath = QDir(cacheBaseFolder).filePath(relPath);
-        QString relativeCachedPath = QDir(cacheBaseFolder).relativeFilePath(cachedAbsolutePath);
-        if (relativeCachedPath.startsWith("./"))
-            relativeCachedPath = relativeCachedPath.mid(2);
+        qDebug() << "[cacheIncludesInContent] Cached file:" << absSrcFile << "->" << cacheDestPath;
 
-        // Replacement marker: cached include
-        QString replacement = QString("<!-- cached: %1 -->").arg(relativeCachedPath);
+        // Replace include marker with cached marker, preserving folder prefix
+        QString replacement = QString("<!-- cached: %1 -->").arg(relPath);
 
-        // Replace include marker in content
         int start = m.capturedStart(0);
         int length = m.capturedLength(0);
         result.replace(start, length, replacement);
 
-        // Move offset forward past replacement to continue searching
         offset = start + replacement.length();
     }
 
@@ -421,14 +531,10 @@ QString Session::expandIncludesOnce(const QString &content)
             break;
 
         QString includePath = m.captured(1).trimmed();
-        // Resolve absolute path to cached included file (docs or src cache folder)
-        QString absPath;
-        const QString ext = QFileInfo(includePath).suffix().toLower();
-        if (ext == "h" || ext == "cpp" || ext == "hpp") {
-            absPath = QDir(sessionSrcCacheFolder()).filePath(includePath);
-        } else {
-            absPath = QDir(sessionDocCacheFolder()).filePath(includePath);
-        }
+        includePath = QDir::cleanPath(includePath);
+
+        // Resolve absolute path inside session cache folder (including folder prefix)
+        QString absPath = QDir(sessionCacheBaseFolder()).filePath(includePath);
 
         QString includedContent;
         QFile incFile(absPath);

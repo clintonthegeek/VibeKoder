@@ -170,16 +170,12 @@ void SessionTabWidget::buildPromptSliceTree()
 QString SessionTabWidget::promptSliceSummary(const PromptSlice &slice) const
 {
     QString s = slice.content.trimmed();
-    qDebug() << "[promptSliceSummary] Raw slice content for role:" << (slice.role == MessageRole::System ? "System" : slice.role == MessageRole::User ? "User" : "Assistant")
-             << "preview:\n" << s.left(200).replace('\n', "\\n");
 
     // Truncate to 60 chars for display
     s = s.left(60);
     s.replace('\n', ' ');
     if (slice.content.length() > 60)
         s += "...";
-
-    qDebug() << "[promptSliceSummary] Formatted summary:" << s;
 
     return s;
 }
@@ -246,6 +242,12 @@ void SessionTabWidget::onSendClicked()
         if (!saveSession()) {
             QMessageBox::warning(this, "Error", "Failed to save session after adding prompt.");
         }
+    }
+
+    // Step 3 addition: Run command pipes before caching includes and compiling prompt
+    if (!m_session.runCommandPipes()) {
+        QMessageBox::warning(this, "Error", "Failed to run command pipes in session.");
+        return;
     }
 
     // Perform caching of includes in the session slices, update slices, save session again

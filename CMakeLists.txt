@@ -44,6 +44,7 @@ else()
             openai_message_model.cpp openai_message_model.h
             openai_request.cpp openai_request.h
             sessiontabwidget.h sessiontabwidget.cpp
+            commandpipemanager.h commandpipemanager.cpp
         )
     endif()
 endif()
