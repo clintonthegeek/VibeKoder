@@ -4,9 +4,9 @@
 #include <QHBoxLayout>
 #include <QHeaderView>
 #include <QMessageBox>
-
+#include <QKeyEvent>
+#include <QSplitter>
 #include <QDebug>
-#include <qsplitter.h>
 
 SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project, QWidget *parent)
     : QWidget(parent)
@@ -18,7 +18,7 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
         qWarning() << "Failed loading session file " << m_sessionFilePath;
     }
 
-    //setup OpenAI connections
+    // Setup OpenAI connections
     m_openAIRequest = new OpenAIRequest(this);
     connect(m_openAIRequest, &OpenAIRequest::requestFinished, this, &SessionTabWidget::onOpenAIResponse);
     connect(m_openAIRequest, &OpenAIRequest::requestError, this, &SessionTabWidget::onOpenAIError);
@@ -26,49 +26,61 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     // UI setup
     auto mainLayout = new QVBoxLayout(this);
 
-    auto splitter = new QSplitter(Qt::Horizontal, this);
+    // Splitter for prompt slice tree and slice editor
+    auto splitter = new QSplitter(Qt::Vertical, this);
     mainLayout->addWidget(splitter);
 
-    // Left: full session markdown editor
-    m_sessionEditor = new QPlainTextEdit(splitter);
-    m_sessionEditor->setPlainText("");
-    m_sessionEditor->setLineWrapMode(QPlainTextEdit::NoWrap);
-
-    // Right: control panel
-    QWidget *rightPanel = new QWidget(splitter);
-    auto rightLayout = new QVBoxLayout(rightPanel);
-
     // Prompt slice tree widget
-    m_promptSliceTree = new QTreeWidget(rightPanel);
+    m_promptSliceTree = new QTreeWidget(splitter);
     m_promptSliceTree->setHeaderLabels({ "Timestamp", "Role", "Summary" });
     m_promptSliceTree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
-    rightLayout->addWidget(m_promptSliceTree);
+
+    // Editable slice editor (replaces m_commandOutput)
+    m_sliceEditor = new QTextEdit(splitter);
+    m_sliceEditor->setAcceptRichText(false);
+    m_sliceEditor->setPlaceholderText("Edit selected prompt slice here...");
+    m_sliceEditor->setEnabled(false); // Disabled until a slice is selected
+
+    // Horizontal layout for buttons
+    auto buttonLayout = new QHBoxLayout();
+    mainLayout->addLayout(buttonLayout);
 
     // Fork button
-    m_forkButton = new QPushButton("Fork Session Here", rightPanel);
+    m_forkButton = new QPushButton("Fork Session Here", this);
     m_forkButton->setEnabled(false);
-    rightLayout->addWidget(m_forkButton);
+    buttonLayout->addWidget(m_forkButton);
 
-    // Command pipe output box
-    m_commandOutput = new QTextEdit(rightPanel);
-    m_commandOutput->setReadOnly(true);
-    m_commandOutput->setMinimumHeight(100);
-    rightLayout->addWidget(m_commandOutput);
+    // Spacer for future buttons
+    buttonLayout->addStretch();
 
     // Append user prompt input
-    m_appendUserPrompt = new QPlainTextEdit(rightPanel);
+    m_appendUserPrompt = new QPlainTextEdit(this);
     m_appendUserPrompt->setPlaceholderText("Type new user prompt slice here...");
-    m_appendUserPrompt->setFixedHeight(80);
-    rightLayout->addWidget(m_appendUserPrompt);
+    m_appendUserPrompt->setFixedHeight(240);
+    mainLayout->addWidget(m_appendUserPrompt);
 
     // Send button
-    m_sendButton = new QPushButton("Send", rightPanel);
-    rightLayout->addWidget(m_sendButton);
+    m_sendButton = new QPushButton("Send", this);
+    mainLayout->addWidget(m_sendButton);
 
     // Connections
     connect(m_forkButton, &QPushButton::clicked, this, &SessionTabWidget::onForkClicked);
     connect(m_sendButton, &QPushButton::clicked, this, &SessionTabWidget::onSendClicked);
     connect(m_promptSliceTree, &QTreeWidget::itemSelectionChanged, this, &SessionTabWidget::onPromptSliceSelected);
+
+    // Update slice content when edited
+    connect(m_sliceEditor, &QTextEdit::textChanged, this, [this]() {
+        auto selectedItems = m_promptSliceTree->selectedItems();
+        if (selectedItems.isEmpty())
+            return;
+
+        int idx = selectedItems.first()->data(0, Qt::UserRole).toInt();
+        QString newContent = m_sliceEditor->toPlainText();
+        m_session.setPromptSliceContent(idx, newContent);
+    });
+
+    // Handle Shift+Enter in m_appendUserPrompt to trigger send
+    m_appendUserPrompt->installEventFilter(this);
 
     loadSession();
 }
@@ -85,13 +97,12 @@ void SessionTabWidget::loadSession()
         return;
     }
 
-    // Show content in session editor
-    m_sessionEditor->setPlainText(m_session.compiledRawMarkdown());
-
-    // Build prompt slice tree
     buildPromptSliceTree();
-}
 
+    // Clear slice editor and disable until selection
+    m_sliceEditor->clear();
+    m_sliceEditor->setEnabled(false);
+}
 
 void SessionTabWidget::onOpenAIResponse(const QString &responseText)
 {
@@ -99,20 +110,22 @@ void SessionTabWidget::onOpenAIResponse(const QString &responseText)
 
     m_session.appendAssistantSlice(responseText);
 
-    // Update editor and prompt tree
-    m_sessionEditor->setPlainText(m_session.compiledRawMarkdown());
     buildPromptSliceTree();
 
-    // Show in command output box, if any
-    if (m_commandOutput) {
-        m_commandOutput->append(responseText);
+    // Show response in slice editor if last slice is assistant and selected
+    auto slices = m_session.slices();
+    int lastIndex = slices.size() - 1;
+    if (lastIndex >= 0) {
+        auto selectedItems = m_promptSliceTree->selectedItems();
+        if (!selectedItems.isEmpty() && selectedItems.first()->data(0, Qt::UserRole).toInt() == lastIndex) {
+            m_sliceEditor->setPlainText(responseText);
+        }
     }
 
     if (!saveSession()) {
         QMessageBox::warning(this, "Error", "Failed to save session after assistant response.");
     }
 
-    // Re-enable send button
     if (m_sendButton)
         m_sendButton->setEnabled(true);
 }
@@ -123,8 +136,6 @@ void SessionTabWidget::onOpenAIError(const QString &errorString)
     if (m_sendButton)
         m_sendButton->setEnabled(true);
 }
-
-
 
 void SessionTabWidget::buildPromptSliceTree()
 {
@@ -146,6 +157,10 @@ void SessionTabWidget::buildPromptSliceTree()
     }
 
     m_forkButton->setEnabled(false);
+
+    // Clear and disable slice editor on rebuild
+    m_sliceEditor->clear();
+    m_sliceEditor->setEnabled(false);
 }
 
 QString SessionTabWidget::promptSliceSummary(const PromptSlice &slice) const
@@ -160,7 +175,24 @@ QString SessionTabWidget::promptSliceSummary(const PromptSlice &slice) const
 void SessionTabWidget::onPromptSliceSelected()
 {
     auto selectedItems = m_promptSliceTree->selectedItems();
-    m_forkButton->setEnabled(!selectedItems.isEmpty());
+    bool hasSelection = !selectedItems.isEmpty();
+    m_forkButton->setEnabled(hasSelection);
+
+    if (!hasSelection) {
+        m_sliceEditor->clear();
+        m_sliceEditor->setEnabled(false);
+        return;
+    }
+
+    int idx = selectedItems.first()->data(0, Qt::UserRole).toInt();
+    QString content = m_session.promptSliceContent(idx);
+
+    // Block signals to avoid recursive update when setting text
+    m_sliceEditor->blockSignals(true);
+    m_sliceEditor->setPlainText(content);
+    m_sliceEditor->blockSignals(false);
+
+    m_sliceEditor->setEnabled(true);
 }
 
 void SessionTabWidget::onForkClicked()
@@ -185,8 +217,6 @@ void SessionTabWidget::onSendClicked()
         return;
     }
 
-    // 2. Update GUI editor with freshly loaded markdown (optional)
-    m_sessionEditor->setPlainText(m_session.compiledRawMarkdown());
     buildPromptSliceTree();
 
     QString newPrompt = m_appendUserPrompt->toPlainText().trimmed();
@@ -194,7 +224,6 @@ void SessionTabWidget::onSendClicked()
     if (!newPrompt.isEmpty()) {
         m_session.appendUserSlice(newPrompt);
 
-        m_sessionEditor->setPlainText(m_session.compiledRawMarkdown());
         buildPromptSliceTree();
 
         m_appendUserPrompt->clear();
@@ -203,6 +232,14 @@ void SessionTabWidget::onSendClicked()
         if (!saveSession()) {
             QMessageBox::warning(this, "Error", "Failed to save session after adding prompt.");
         }
+    }
+
+    // Perform caching of includes in the session slices, update slices, save session again
+    if (!m_session.refreshCacheAndSave()) {
+        QMessageBox::warning(this, "Error", "Failed to cache includes in session after adding prompt.");
+    } else {
+        // Reload prompt tree and slice editor to show updated cached content
+        loadSession();
     }
 
     QString prompt = m_session.compilePrompt();
@@ -220,8 +257,13 @@ void SessionTabWidget::onSendClicked()
 
     m_openAIRequest->execute();
 
-    // Optionally disable UI controls here to prevent multiple sends
+    // Disable send button to prevent multiple sends
     m_sendButton->setEnabled(false);
+}
+
+QString SessionTabWidget::sessionFilePath() const
+{
+    return m_sessionFilePath;
 }
 
 bool SessionTabWidget::saveSession()
@@ -237,4 +279,22 @@ bool SessionTabWidget::saveSession()
     }
 
     return true;
+}
+
+// Event filter to catch Shift+Enter in m_appendUserPrompt
+bool SessionTabWidget::eventFilter(QObject *obj, QEvent *event)
+{
+    if (obj == m_appendUserPrompt && event->type() == QEvent::KeyPress) {
+        QKeyEvent *keyEvent = static_cast<QKeyEvent*>(event);
+        if (keyEvent->key() == Qt::Key_Return || keyEvent->key() == Qt::Key_Enter) {
+            if (keyEvent->modifiers() & Qt::ShiftModifier) {
+                // Trigger send
+                if (m_sendButton->isEnabled()) {
+                    onSendClicked();
+                    return true; // event handled
+                }
+            }
+        }
+    }
+    return QWidget::eventFilter(obj, event);
 }

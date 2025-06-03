@@ -20,6 +20,11 @@ public:
     ~SessionTabWidget();
 
     bool saveSession();
+    QString sessionFilePath() const;
+
+protected:
+    bool eventFilter(QObject *obj, QEvent *event) override;
+
 
 signals:
     void requestSendPrompt(const QString &compiledPrompt);
@@ -44,10 +49,9 @@ private:
     Session m_session;
 
     // UI widgets
-    QPlainTextEdit* m_sessionEditor = nullptr;
     QTreeWidget* m_promptSliceTree = nullptr;
     QPushButton* m_forkButton = nullptr;
-    QTextEdit* m_commandOutput = nullptr;
+    QTextEdit* m_sliceEditor = nullptr;
     QPlainTextEdit* m_appendUserPrompt = nullptr;
     QPushButton* m_sendButton = nullptr;
 };

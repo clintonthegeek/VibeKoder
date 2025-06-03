@@ -57,10 +57,37 @@ void MainWindow::setupUi()
     // === Central Tabs ===
     m_tabWidget = new QTabWidget(this);
     setCentralWidget(m_tabWidget);
+    m_tabWidget->setTabsClosable(true);
+
+    connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, [this](int index){
+        QWidget *widget = m_tabWidget->widget(index);
+        if (!widget)
+            return;
+
+        // If it's a session tab, remove from m_openSessions map and delete widget
+        // Assuming session tabs are all except the project tab at index 0
+        if (index != 0) {
+            // Find session path by widget pointer
+            QString sessionPath;
+            for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
+                if (it.value() == widget) {
+                    sessionPath = it.key();
+                    break;
+                }
+            }
+            if (!sessionPath.isEmpty()) {
+                m_openSessions.remove(sessionPath);
+            }
+        }
+
+        m_tabWidget->removeTab(index);
+        widget->deleteLater();
+    });
 
     // === Project Tab ===
     m_projectTab = new QWidget();
     QVBoxLayout* projLayout = new QVBoxLayout(m_projectTab);
+
 
     m_projectInfoLabel = new QLabel("No project loaded");
     m_projectInfoLabel->setWordWrap(true);
@@ -87,6 +114,8 @@ void MainWindow::setupUi()
 
 
     m_tabWidget->addTab(m_projectTab, "Project");
+    m_tabWidget->tabBar()->setTabButton(0, QTabBar::RightSide, nullptr); // Remove close button on tab 0
+
 }
 
 #include <QDir>

@@ -200,10 +200,16 @@ QString Session::cacheIncludesInContent(const QString &content)
         const QString docsFolderName = QFileInfo(m_project->docsFolder()).fileName();
         const QString srcFolderName = QFileInfo(m_project->srcFolder()).fileName();
 
+        qDebug() << "[cacheIncludesInContent] includePath =" << includePath;
+        qDebug() << "[cacheIncludesInContent] docsFolderName =" << docsFolderName;
+        qDebug() << "[cacheIncludesInContent] srcFolderName =" << srcFolderName;
+
         if (relPath.startsWith(docsFolderName + "/") || relPath.startsWith(docsFolderName + "\\"))
             relPath = relPath.mid(docsFolderName.length() + 1);
         else if (relPath.startsWith(srcFolderName + "/") || relPath.startsWith(srcFolderName + "\\"))
             relPath = relPath.mid(srcFolderName.length() + 1);
+
+        qDebug() << "[cacheIncludesInContent] relPath after prefix removal =" << relPath;
 
         // Determine cache base folder (docs cache or src cache)
         QString cacheBaseFolder;
@@ -222,7 +228,9 @@ QString Session::cacheIncludesInContent(const QString &content)
 
         // Compute relative path from session folder to cached file for replacement
         QString cachedAbsolutePath = QDir(cacheBaseFolder).filePath(relPath);
-        QString relativeCachedPath = QDir(sessionFolder()).relativeFilePath(cachedAbsolutePath);
+        QString relativeCachedPath = QDir(cacheBaseFolder).relativeFilePath(cachedAbsolutePath);
+        if (relativeCachedPath.startsWith("./"))
+            relativeCachedPath = relativeCachedPath.mid(2);
 
         // Replacement marker: cached include
         qDebug() << "[cacheIncludesInContent] relativeCachedPath =" << relativeCachedPath;
@@ -239,6 +247,20 @@ QString Session::cacheIncludesInContent(const QString &content)
     }
 
     return result;
+}
+
+QString Session::promptSliceContent(int index) const
+{
+    if (index < 0 || index >= m_slices.size())
+        return QString();
+    return m_slices[index].content;
+}
+
+void Session::setPromptSliceContent(int index, const QString &content)
+{
+    if (index < 0 || index >= m_slices.size())
+        return;
+    m_slices[index].content = content;
 }
 
 QString Session::compilePrompt()

@@ -42,6 +42,9 @@ public:
     void appendAssistantSlice(const QString &markdownContent);
     void appendSystemSlice(const QString &markdownContent);
 
+    QString promptSliceContent(int index) const;
+    void setPromptSliceContent(int index, const QString &content);
+
     // Parse markdown session data into slices (public for your editor save slot)
     bool parseSessionMarkdown(const QString &data);
 
