@@ -33,15 +33,6 @@ MainWindow::~MainWindow()
         }
     }
     m_openSessions.clear();
-
-    // Close and delete detached windows
-    for (auto win : m_detachedWindows) {
-        if (win) {
-            win->close();
-            win->deleteLater();
-        }
-    }
-    m_detachedWindows.clear();
     delete m_project;
 }
 
@@ -112,11 +103,16 @@ void MainWindow::setupUi()
                 qDebug() << "[MainWindow] Tracking widget about to detach:" << widget;
                 m_detachingWidgets.insert(widget);
             });
+    //for debugging tab selection changes
+    connect(m_tabWidget, &QTabWidget::currentChanged, this, [](int index){
+        qDebug() << "Main tab widget current tab changed to index:" << index;
+    });
 
     // === Project Tab ===
     m_projectTab = new QWidget();
-    QVBoxLayout* projLayout = new QVBoxLayout(m_projectTab);
+    m_tabWidget->setProjectTabWidget(m_projectTab);
 
+    QVBoxLayout* projLayout = new QVBoxLayout(m_projectTab);
 
     m_projectInfoLabel = new QLabel("No project loaded");
     m_projectInfoLabel->setWordWrap(true);
@@ -140,11 +136,38 @@ void MainWindow::setupUi()
     projLayout->addWidget(m_openSessionBtn);
     connect(m_openSessionBtn, &QPushButton::clicked, this, &MainWindow::onOpenSelectedSession);
 
-
-
     m_tabWidget->addTab(m_projectTab, "Project");
-    m_tabWidget->tabBar()->setTabButton(0, QTabBar::RightSide, nullptr); // Remove close button on tab 0
 
+    // Remove close button on Project tab, prevent closure by overriding tab close
+    int projIndex = m_tabWidget->indexOf(m_projectTab);
+    if (projIndex != -1) {
+        m_tabWidget->tabBar()->setTabButton(projIndex, QTabBar::RightSide, nullptr);
+        connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, [this](int index){
+            QWidget *widget = m_tabWidget->widget(index);
+            if (!widget)
+                return;
+
+            if (widget == m_projectTab) {
+                // Ignore close request on Project tab
+                return;
+            }
+
+            m_tabWidget->removeTab(index);
+            widget->deleteLater();
+
+            // Remove from m_openSessions if needed
+            QString sessionPathToRemove;
+            for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
+                if (it.value() == widget) {
+                    sessionPathToRemove = it.key();
+                    break;
+                }
+            }
+            if (!sessionPathToRemove.isEmpty()) {
+                m_openSessions.remove(sessionPathToRemove);
+            }
+        });
+    }
 }
 
 void MainWindow::setupTabWidgetConnections(DraggableTabWidget* tabWidget)
@@ -175,18 +198,7 @@ void MainWindow::onTabRemovedFromWidget(DraggableTabWidget* tabWidget, int index
         qDebug() << "[MainWindow] Removed session from m_openSessions:" << sessionPathToRemove;
     }
 
-    // Check if widget is currently detaching; if so, skip deletion
-    if (m_detachingWidgets.contains(widget)) {
-        qDebug() << "[MainWindow] Widget is detaching, skipping deletion:" << widget;
-        m_detachingWidgets.remove(widget);
-        return;
-    }
-
-    // Only delete widget if it is orphaned or tabWidget is main tab widget (closed tab)
-    if (widget && (tabWidget == m_tabWidget || widget->parent() == nullptr)) {
-        qDebug() << "[MainWindow] Deleting widget" << widget;
-        widget->deleteLater();
-    }
+    // No deletion here. The tab close handler deletes widgets.
 
     // Close detached window if empty
     if (tabWidget != m_tabWidget && tabWidget->count() == 0) {
@@ -251,7 +263,7 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
     << "widget pointer:" << tabInfo.widget();
 
     QMainWindow *newWindow = new QMainWindow();
-    newWindow->setAttribute(Qt::WA_DeleteOnClose);
+    newWindow->setAttribute(Qt::WA_DeleteOnClose);  // <-- Important
 
     DraggableTabWidget *newTabWidget = new DraggableTabWidget(newWindow);
     newWindow->setCentralWidget(newTabWidget);
@@ -274,17 +286,12 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
 
     setupTabWidgetConnections(newTabWidget);
 
-    m_detachedWindows.append(newWindow);
-    connect(newWindow, &QMainWindow::destroyed, this, [this, newWindow]() {
-        m_detachedWindows.removeOne(newWindow);
-        qDebug() << "[MainWindow] Detached window destroyed, removed from list.";
-    });
+    // Remove m_detachedWindows append and destroyed connection
 
     newWindow->setGeometry(winRect);
     newWindow->show();
 
     qDebug() << "[MainWindow] New window shown";
-
 }
 
 void MainWindow::onOpenProject()

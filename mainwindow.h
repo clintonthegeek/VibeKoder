@@ -58,7 +58,6 @@ private:
 
     OpenAIRequest* m_openAIRequest = nullptr;
     QMap<QString, SessionTabWidget*> m_pendingSessions;
-    QList<QMainWindow*> m_detachedWindows;
 
     void setupTabWidgetConnections(DraggableTabWidget* tabWidget);
     QSet<QWidget*> m_detachingWidgets;
