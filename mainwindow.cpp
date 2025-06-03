@@ -55,9 +55,11 @@ void MainWindow::setupUi()
     statusBar();
 
     // === Central Tabs ===
-    m_tabWidget = new QTabWidget(this);
+    m_tabWidget = new DraggableTabWidget(this);
     setCentralWidget(m_tabWidget);
     m_tabWidget->setTabsClosable(true);
+    connect(m_tabWidget, &DraggableTabWidget::createNewWindow,
+            this, &MainWindow::onCreateNewWindowWithTab);
 
     connect(m_tabWidget, &QTabWidget::tabCloseRequested, this, [this](int index){
         QWidget *widget = m_tabWidget->widget(index);
@@ -166,6 +168,34 @@ void MainWindow::tryAutoLoadProject()
     } else {
         qDebug() << "Multiple project files found in VK folder; skipping auto-load.";
     }
+}
+
+void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableTabWidget::TabInfo &tabInfo)
+{
+    // Create a new top-level window to host the dragged tab
+    QMainWindow *newWindow = new QMainWindow();
+
+    // Create a new DraggableTabWidget inside the new window
+    DraggableTabWidget *newTabWidget = new DraggableTabWidget(newWindow);
+    newWindow->setCentralWidget(newTabWidget);
+
+    // Add the dragged tab to the new tab widget
+    newTabWidget->addTab(tabInfo.widget(), tabInfo.icon(), tabInfo.text());
+    newTabWidget->setTabToolTip(0, tabInfo.toolTip());
+    newTabWidget->setTabWhatsThis(0, tabInfo.whatsThis());
+    newTabWidget->setCurrentIndex(0);
+
+    //Window Lifetime
+    m_detachedWindows.append(newWindow);
+    connect(newWindow, &QMainWindow::destroyed, this, [this, newWindow]() {
+        m_detachedWindows.removeOne(newWindow);
+    });
+
+    // Set geometry and show window
+    newWindow->setGeometry(winRect);
+    newWindow->show();
+
+    // Optional: track new windows if you want to manage them later
 }
 
 void MainWindow::onOpenProject()

@@ -3,8 +3,8 @@
 
 #include <QMainWindow>
 #include <QMap>
+#include "draggabletabwidget.h"
 
-class QTabWidget;
 class QLabel;
 class QListWidget;
 class QPushButton;
@@ -38,7 +38,9 @@ private:
     Project* m_project = nullptr;
 
     // UI widgets
-    QTabWidget* m_tabWidget = nullptr;
+    DraggableTabWidget* m_tabWidget = nullptr;
+    void onCreateNewWindowWithTab(const QRect &winRect, const DraggableTabWidget::TabInfo &tabInfo);
+
 
     // Project tab widgets
     QWidget* m_projectTab = nullptr;
@@ -53,6 +55,8 @@ private:
 
     OpenAIRequest* m_openAIRequest = nullptr;
     QMap<QString, SessionTabWidget*> m_pendingSessions;
+    QList<QMainWindow*> m_detachedWindows;
+
 
 };
 

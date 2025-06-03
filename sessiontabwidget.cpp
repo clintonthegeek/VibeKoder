@@ -92,6 +92,8 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 SessionTabWidget::~SessionTabWidget()
 {
     // Cleanup if needed
+    qDebug() << "Session " + m_sessionFilePath + "destroyed.";
+
 }
 
 void SessionTabWidget::loadSession()
