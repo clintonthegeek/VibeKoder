@@ -60,8 +60,6 @@ public:
 
     QString compiledRawMarkdown() const;
 
-    static QString sanitizeFencesRecursive(const QString &markdown, int outerFenceLength = 3);
-
 private:
     QString m_filepath;
     Project* m_project; // used for base folder path to resolve includes
@@ -76,19 +74,11 @@ private:
     // Updated expandIncludesRecursive with additional parameter for header level context
     QString expandIncludesRecursive(const QString &content,
                                              QSet<QString> &visitedFiles,
-                                             int parentHeaderLevel,
-                                             bool promoteHeaders,
                                              bool expandIncludeMarkers);
 
     QString expandIncludesOnce(const QString &content);
 
 
-
-    // Helper to find enclosing header level before an include marker
-    int findEnclosingHeaderLevel(const QString &text, int includePos);
-
-    // Promote markdown headers by specified levels (caps at 6)
-    QString promoteMarkdownHeaders(const QString &md, int levelOffset);
 
     QString cacheIncludesInContent(const QString& content);
     QString sessionFolder() const;

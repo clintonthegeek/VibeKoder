@@ -289,8 +289,6 @@ QString Session::compilePrompt()
 
 QString Session::expandIncludesRecursive(const QString &content,
                                          QSet<QString> &visitedFiles,
-                                         int parentHeaderLevel,
-                                         bool promoteHeaders,
                                          bool expandIncludeMarkers /*= true*/)
 {
     // Regex to find fenced code blocks: ``` or ~~~ with optional lang
@@ -397,27 +395,15 @@ QString Session::expandIncludesRecursive(const QString &content,
 
         // Determine enclosing header level before include marker in result
         int includePos = m.capturedStart(0);
-        int enclosingLevel = findEnclosingHeaderLevel(result, includePos);
-        if (enclosingLevel == 0)
-            enclosingLevel = parentHeaderLevel;
 
         // Recursively expand includes inside includedContent
         // For "include" markers, pass expandIncludeMarkers flag as true recursively
         // For cached, always expand includes inside recursively (expandIncludeMarkers = true)
         bool recursiveExpandIncludeMark = (markerType == "include") ? expandIncludeMarkers : true;
-        QString recExpanded = expandIncludesRecursive(includedContent, visitedFiles, enclosingLevel + 1, false, recursiveExpandIncludeMark);
-
-        // Promote headers if requested
-        if (promoteHeaders)
-            recExpanded = promoteMarkdownHeaders(recExpanded, enclosingLevel + 1);
 
         // Replace marker in result with expanded content
         int start = m.capturedStart(0);
         int length = m.capturedLength(0);
-        result.replace(start, length, recExpanded);
-
-        // Move offset past replaced content
-        offset = start + recExpanded.length();
 
         visitedFiles.remove(absPath);
 
@@ -426,10 +412,6 @@ QString Session::expandIncludesRecursive(const QString &content,
         // For simplicity, you can break and re-call function if needed.
     }
 
-    // Finally, if promoteHeaders requested, promote headers at top level too:
-    if (promoteHeaders)
-        return promoteMarkdownHeaders(result, parentHeaderLevel);
-    else
         return result;
 }
 
@@ -479,22 +461,25 @@ QVector<PromptSlice> Session::slices() const
     return m_slices;
 }
 
+void Session::appendSystemSlice(const QString &markdownContent)
+{
+    qDebug() << "[appendSystemSlice] content preview:\n" << markdownContent.left(200).replace('\n', "\\n");
+    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+    m_slices.append({MessageRole::System, markdownContent, timestamp});
+}
+
 void Session::appendUserSlice(const QString &markdownContent)
 {
+    qDebug() << "[appendUserSlice] content preview:\n" << markdownContent.left(200).replace('\n', "\\n");
     QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
     m_slices.append({MessageRole::User, markdownContent, timestamp});
 }
 
 void Session::appendAssistantSlice(const QString &markdownContent)
 {
+    qDebug() << "[appendAssistantSlice] content preview:\n" << markdownContent.left(200).replace('\n', "\\n");
     QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
     m_slices.append({MessageRole::Assistant, markdownContent, timestamp});
-}
-
-void Session::appendSystemSlice(const QString &markdownContent)
-{
-    QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
-    m_slices.append({MessageRole::System, markdownContent, timestamp});
 }
 
 bool Session::parseSessionMarkdown(const QString &data)
@@ -548,64 +533,6 @@ bool Session::parseSessionMarkdown(const QString &data)
     return true;
 }
 
-// Promote all markdown headers by a given level (caps at 6)
-QString Session::promoteMarkdownHeaders(const QString &md, int promoteBy)
-{
-    // qDebug() << "promoteMarkdownHeaders called with promoteBy =" << promoteBy
-    //          << "input length =" << md.length();
-    if (promoteBy <= 0) return md;
-
-    static const QRegularExpression headerRe(R"(^(\s{0,3})(#{1,6})(\s.*)$)", QRegularExpression::MultilineOption);
-
-    QString promoted = md;
-    int offset = 0;
-
-    auto matchIt = headerRe.globalMatch(md);
-    while (matchIt.hasNext()) {
-        QRegularExpressionMatch match = matchIt.next();
-        int start = match.capturedStart(2) + offset;
-        int length = match.capturedLength(2);
-
-        QString hashes = match.captured(2);
-        int currentLevel = hashes.length();
-        int newLevel = currentLevel + promoteBy;
-        if (newLevel > 6) newLevel = 6;
-
-        // qDebug() << "Promoting header from level" << currentLevel << "to level" << newLevel;
-
-        QString newHashes = QString(newLevel, '#');
-
-        promoted.replace(start, length, newHashes);
-
-        offset += newHashes.length() - length;
-    }
-
-    return promoted;
-}
-
-// Find the heading level just before 'includePos' in 'text'
-// Returns 0 if no heading found (treated as document root)
-int Session::findEnclosingHeaderLevel(const QString &text, int includePos)
-{
-    static const QRegularExpression headerRe(R"(^\s{0,3}(#{1,6})\s+.+$)", QRegularExpression::MultilineOption);
-
-    QString precedingText = text.left(includePos);
-
-    QList<QRegularExpressionMatch> matches;
-
-    auto it = headerRe.globalMatch(precedingText);
-    while (it.hasNext())
-        matches.append(it.next());
-
-    if (matches.isEmpty())
-        return 0; // No header found before include
-
-    QRegularExpressionMatch lastHeader = matches.last();
-
-    return lastHeader.captured(1).length();
-}
-
-
 void Session::setCommandPipeOutput(const QString &key, const QString &output)
 {
     m_commandPipeOutputs[key] = output;
@@ -634,121 +561,6 @@ static int maxBacktickRun(const QString &text)
     return maxRun;
 }
 
-// Replace any inner fences of length >= minFenceLength with fences at least one longer.
-// This avoids conflicts with our outer fence.
-static QString sanitizeInnerFences(const QString &content, int minFenceLength)
-{
-    QString sanitized = content;
-
-    // Regex to find fenced blocks: fences of backticks ```...```
-    // We focus on fences with length >= minFenceLength - 1 to replace them.
-    // This is a heuristic — complicated nested markdown is hard to parse perfectly.
-
-    // Pattern matches fences with >= 3 backticks:
-    static QRegularExpression fenceRe(R"((`{3,})(.*?)(`{3,}))", QRegularExpression::DotMatchesEverythingOption);
-
-    int pos = 0;
-    while (true) {
-        QRegularExpressionMatch m = fenceRe.match(sanitized, pos);
-        if (!m.hasMatch())
-            break;
-
-        QString fenceStart = m.captured(1);
-        QString fenceEnd = m.captured(3);
-
-        int fenceLen = fenceStart.length();
-
-        if (fenceLen >= minFenceLength) {
-            // Bump fence length by 1 to avoid conflict with outer fence
-            int newFenceLen = fenceLen + 1;
-            QString newFence = QString(newFenceLen, '`');
-
-            // Replace start and end fences in the match with newFence of longer length
-            int startPos = m.capturedStart(1);
-            int endPos = m.capturedStart(3);
-
-            sanitized.replace(endPos, fenceLen, newFence);
-            sanitized.replace(startPos, fenceLen, newFence);
-
-            // Move pos forward to avoid infinite loop on same match:
-            pos = endPos + newFenceLen;
-        } else {
-            // Fence is shorter, safe to skip
-            pos = m.capturedEnd(0);
-        }
-    }
-
-    return sanitized;
-}
-
-
-QString Session::sanitizeFencesRecursive(const QString &markdown, int outerFenceLength)
-{
-    QString input = markdown;
-    QString output;
-
-    // Normalize line endings to \n for consistent matching
-    input.replace("\r\n", "\n").replace("\r", "\n");
-
-    // Regex to match fenced code blocks:
-    //  - group 1: opening fence (backticks or tildes, length >= 3)
-    //  - group 2: optional language id
-    //  - group 3: content inside fenced block
-    //  - followed by matching closing fence same as opening fence
-    static const QRegularExpression fenceRe(
-        R"(([`~]{3,})[ \t]*([a-zA-Z0-9_.+-]*)[ \t]*\n(.*?)(\n\1[ \t]*)+)",
-        QRegularExpression::DotMatchesEverythingOption | QRegularExpression::MultilineOption);
-
-    int lastMatchEnd = 0;
-
-    QRegularExpressionMatchIterator it = fenceRe.globalMatch(input);
-
-    while (it.hasNext()) {
-        QRegularExpressionMatch match = it.next();
-
-        int matchStart = match.capturedStart(0);
-        int matchEnd = match.capturedEnd(0);
-
-        // Append text before match as-is
-        output += input.midRef(lastMatchEnd, matchStart - lastMatchEnd);
-
-        QString fence = match.captured(1);
-        int fenceLen = fence.length();
-        QChar fenceChar = fence[0];
-        QString lang = match.captured(2);
-        QString innerContent = match.captured(3);
-
-        //qDebug() << "Sanitize fences:" << "outer Fence Length:" << outerFenceLength
-        //         << "found fence length:" << fenceLen
-        //         << "lang:" << lang;
-
-        // Recursively process inner content increasing outerFenceLength by 1
-        QString sanitizedInner = sanitizeFencesRecursive(innerContent, outerFenceLength + 1);
-
-        // Decide new fence length:
-        int newFenceLen = outerFenceLength;
-        if (newFenceLen < fenceLen) {
-            newFenceLen = fenceLen;  // never shorten fences
-        }
-
-        QString newFence(newFenceLen, fenceChar);
-
-        // Build replacement fenced block
-        QString replacementBlock = QStringLiteral("%1%2\n%3\n%1\n").arg(newFence, lang, sanitizedInner);
-
-        output += replacementBlock;
-
-        lastMatchEnd = matchEnd;
-    }
-
-    // Append remaining content after the last match
-    output += input.midRef(lastMatchEnd);
-
-    // qDebug() << "Sanitize recursion complete for fence length" << outerFenceLength
-    //          << "output length:" << output.length();
-
-    return output;
-}
 
 QString Session::compiledRawMarkdown() const
 {
@@ -761,25 +573,23 @@ QString Session::compiledRawMarkdown() const
         case MessageRole::System: roleStr = "System"; break;
         }
 
-        // Sanitize fences recursively as you already have implemented
-        QString sanitizedContent = sanitizeFencesRecursive(slice.content);
-
-        // Compose top-level heading for slice role + timestamp
-        QString header = QString("# %1").arg(roleStr);
+        // Compose delimiter line for slice role + timestamp
+        QString header = QString("=={ %1").arg(roleStr);
         if (!slice.timestamp.isEmpty()) {
-            header += QString(" (%1)").arg(slice.timestamp);
+            header += QString(" | %1").arg(slice.timestamp);
         }
+        header += " }==";
 
-        // Use fixed 3-backtick fenced block (assuming sanitizeFencesRecursive ensures inner fences longer than 3)
+        // Use fixed 3-backtick fenced block without sanitizing content
         const QString outerFence = "```";
 
         result += QString("%1\n%2markdown\n%3\n%2\n\n")
                       .arg(header)
                       .arg(outerFence)
-                      .arg(sanitizedContent.trimmed());
+                      .arg(slice.content.trimmed());
     }
 
-    return result;
+    return result.trimmed();
 }
 
 QString Session::sessionCacheFolder() const
@@ -862,10 +672,15 @@ bool Session::parseSessionFile(const QString &data)
                 m_metadata.insert(key, value);
             }
 
-            pos = metaEnd + 3; // move past closing ---
+            // Move past closing --- and trailing newlines
+            pos = metaEnd + 4; // Skip \n--- (4 chars: \n + ---)
+            while (pos < data.length() && (data[pos] == '\n' || data[pos] == '\r')) {
+                ++pos;
+            }
+            qDebug() << "[parseSessionFile] Position after metadata block:" << pos
+                     << "next chars:" << data.mid(pos, 20).replace('\n', "\\n");
         }
     }
-
     // Step 2: Parse slices separated by delimiter lines
     // Delimiter line format:
     // =={ Role | yyyy-MM-dd HH:mm:ss }==
@@ -880,7 +695,7 @@ bool Session::parseSessionFile(const QString &data)
         QRegularExpression::CaseInsensitiveOption);
 
     // We'll split data into lines starting from pos
-    QStringList lines = data.mid(pos).split(QRegularExpression("[\r\n]"), Qt::SkipEmptyParts);
+    QStringList lines = data.mid(pos).split(QRegularExpression("[\r\n]"));
 
     // We need to track fenced code blocks to ignore delimiter lines inside them
     bool inFence = false;
@@ -893,9 +708,31 @@ bool Session::parseSessionFile(const QString &data)
 
     auto addSlice = [&]() {
         if (currentRole.isEmpty())
-            return; // no slice to add
+            return;
 
-        QString content = currentContentLines.join("\n").trimmed();
+        // Debug: Log all raw lines for the slice
+        qDebug() << "[parseSessionFile] Raw lines for slice role:" << currentRole;
+        qDebug() << "[parseSessionFile] Total raw lines:" << currentContentLines.size();
+        for (int i = 0; i < currentContentLines.size(); ++i) {
+            QString line = currentContentLines[i];
+            if (line.length() > 120) {
+                line = line.left(120) + "...";
+            }
+            qDebug() << "[parseSessionFile] Line" << i << ":" << line;
+        }
+
+        QString content = currentContentLines.join("\n");
+
+        // Debug: Log the joined content before any processing
+        qDebug() << "[parseSessionFile] Joined content preview (before cleanup):\n"
+                 << content.left(200).replace('\n', "\\n");
+
+        // Clean up leading dash lines and empty lines
+        //content = removeLeadingDashLines(content);
+
+        // Debug: Log the cleaned content
+        qDebug() << "[parseSessionFile] Cleaned content preview:\n"
+                 << content.left(200).replace('\n', "\\n");
 
         // If timestamp missing, add current time
         if (currentTimestamp.isEmpty()) {
@@ -910,6 +747,10 @@ bool Session::parseSessionFile(const QString &data)
             role = MessageRole::Assistant;
         else if (roleLower == "user")
             role = MessageRole::User;
+
+        qDebug() << "[parseSessionFile] Adding slice role:" << currentRole
+                 << "timestamp:" << currentTimestamp
+                 << "content preview:\n" << content.left(200).replace('\n', "\\n");
 
         slices.append({role, content, currentTimestamp});
 
@@ -1008,6 +849,11 @@ QString Session::serializeSessionFile() const
         if (timestampStr.isEmpty()) {
             timestampStr = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
         }
+
+
+        qDebug() << "[serializeSessionFile] Writing slice role:" << roleStr
+                 << "timestamp:" << timestampStr
+                 << "content preview:\n" << slice.content.left(200).replace('\n', "\\n");
 
         // Delimiter line
         result += QString("=={ %1 | %2 }==\n").arg(roleStr, timestampStr);

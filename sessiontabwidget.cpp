@@ -76,6 +76,10 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 
         int idx = selectedItems.first()->data(0, Qt::UserRole).toInt();
         QString newContent = m_sliceEditor->toPlainText();
+
+        qDebug() << "[m_sliceEditor::textChanged] Updating slice index:" << idx
+                 << "new content preview:\n" << newContent.left(200).replace('\n', "\\n");
+
         m_session.setPromptSliceContent(idx, newContent);
     });
 
@@ -165,10 +169,18 @@ void SessionTabWidget::buildPromptSliceTree()
 
 QString SessionTabWidget::promptSliceSummary(const PromptSlice &slice) const
 {
-    QString s = slice.content.trimmed().left(60);
+    QString s = slice.content.trimmed();
+    qDebug() << "[promptSliceSummary] Raw slice content for role:" << (slice.role == MessageRole::System ? "System" : slice.role == MessageRole::User ? "User" : "Assistant")
+             << "preview:\n" << s.left(200).replace('\n', "\\n");
+
+    // Truncate to 60 chars for display
+    s = s.left(60);
     s.replace('\n', ' ');
     if (slice.content.length() > 60)
         s += "...";
+
+    qDebug() << "[promptSliceSummary] Formatted summary:" << s;
+
     return s;
 }
 
@@ -186,6 +198,8 @@ void SessionTabWidget::onPromptSliceSelected()
 
     int idx = selectedItems.first()->data(0, Qt::UserRole).toInt();
     QString content = m_session.promptSliceContent(idx);
+    qDebug() << "[onPromptSliceSelected] Loading slice index:" << idx
+             << "content preview:\n" << content.left(200).replace('\n', "\\n");
 
     // Block signals to avoid recursive update when setting text
     m_sliceEditor->blockSignals(true);
