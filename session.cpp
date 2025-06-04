@@ -56,6 +56,8 @@ Session::~Session()
 
 }
 
+
+
 bool Session::runCommandPipes()
 {
     if (!m_commandPipeManager) {

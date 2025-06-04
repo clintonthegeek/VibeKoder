@@ -7,6 +7,9 @@
 #include <QKeyEvent>
 #include <QSplitter>
 #include <QDebug>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QContextMenuEvent>
 
 SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project, QWidget *parent)
     : QWidget(parent)
@@ -17,7 +20,7 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     if (!m_session.load(m_sessionFilePath)) {
         qWarning() << "Failed loading session file " << m_sessionFilePath;
     }
-        qDebug() << "[SessionTabWidget] Constructor for session:" << sessionPath << "Widget:" << this;
+    qDebug() << "[SessionTabWidget] Constructor for session:" << sessionPath << "Widget:" << this;
 
     // Setup OpenAI connections
     m_openAIRequest = new OpenAIRequest(this);
@@ -35,6 +38,31 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     m_promptSliceTree = new QTreeWidget(splitter);
     m_promptSliceTree->setHeaderLabels({ "Timestamp", "Role", "Summary" });
     m_promptSliceTree->header()->setSectionResizeMode(QHeaderView::ResizeToContents);
+    m_promptSliceTree->setContextMenuPolicy(Qt::CustomContextMenu);
+
+    // Connect right-click menu signal
+    connect(m_promptSliceTree, &QWidget::customContextMenuRequested, this, [this](const QPoint &pos){
+        QTreeWidgetItem* item = m_promptSliceTree->itemAt(pos);
+        if (!item) {
+            // No item under cursor, ignore or disable menu
+            return;
+        }
+
+        if (!m_contextMenu) {
+            m_contextMenu = new QMenu(this);
+
+            QAction* forkAction = m_contextMenu->addAction("Fork Session Here");
+            connect(forkAction, &QAction::triggered, this, &SessionTabWidget::onForkClicked);
+
+            QAction* deleteToEndAction = m_contextMenu->addAction("Delete To End");
+            connect(deleteToEndAction, &QAction::triggered, this, &SessionTabWidget::onDeleteToEndClicked);
+        }
+
+        // Store selected item before showing menu
+        m_promptSliceTree->setCurrentItem(item);
+
+        m_contextMenu->exec(m_promptSliceTree->viewport()->mapToGlobal(pos));
+    });
 
     // Editable slice editor (replaces m_commandOutput)
     m_sliceEditor = new QTextEdit(splitter);
@@ -50,6 +78,17 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     m_forkButton = new QPushButton("Fork Session Here", this);
     m_forkButton->setEnabled(false);
     buttonLayout->addWidget(m_forkButton);
+    connect(m_forkButton, &QPushButton::clicked, this, &SessionTabWidget::onForkClicked);
+
+    // Open Markdown File button
+    m_openMarkdownButton = new QPushButton("Open Markdown File", this);
+    buttonLayout->addWidget(m_openMarkdownButton);
+    connect(m_openMarkdownButton, &QPushButton::clicked, this, &SessionTabWidget::onOpenMarkdownFileClicked);
+
+    // Open Cache button
+    m_openCacheButton = new QPushButton("Open Cache", this);
+    buttonLayout->addWidget(m_openCacheButton);
+    connect(m_openCacheButton, &QPushButton::clicked, this, &SessionTabWidget::onOpenCacheClicked);
 
     // Spacer for future buttons
     buttonLayout->addStretch();
@@ -65,7 +104,6 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     mainLayout->addWidget(m_sendButton);
 
     // Connections
-    connect(m_forkButton, &QPushButton::clicked, this, &SessionTabWidget::onForkClicked);
     connect(m_sendButton, &QPushButton::clicked, this, &SessionTabWidget::onSendClicked);
     connect(m_promptSliceTree, &QTreeWidget::itemSelectionChanged, this, &SessionTabWidget::onPromptSliceSelected);
 
@@ -107,39 +145,6 @@ void SessionTabWidget::loadSession()
     // Clear slice editor and disable until selection
     m_sliceEditor->clear();
     m_sliceEditor->setEnabled(false);
-}
-
-void SessionTabWidget::onOpenAIResponse(const QString &responseText)
-{
-    qDebug() << "SessionTabWidget received OpenAI response, length:" << responseText.length();
-
-    m_session.appendAssistantSlice(responseText);
-
-    buildPromptSliceTree();
-
-    // Show response in slice editor if last slice is assistant and selected
-    auto slices = m_session.slices();
-    int lastIndex = slices.size() - 1;
-    if (lastIndex >= 0) {
-        auto selectedItems = m_promptSliceTree->selectedItems();
-        if (!selectedItems.isEmpty() && selectedItems.first()->data(0, Qt::UserRole).toInt() == lastIndex) {
-            m_sliceEditor->setPlainText(responseText);
-        }
-    }
-
-    if (!saveSession()) {
-        QMessageBox::warning(this, "Error", "Failed to save session after assistant response.");
-    }
-
-    if (m_sendButton)
-        m_sendButton->setEnabled(true);
-}
-
-void SessionTabWidget::onOpenAIError(const QString &errorString)
-{
-    QMessageBox::critical(this, "OpenAI API Error", errorString);
-    if (m_sendButton)
-        m_sendButton->setEnabled(true);
 }
 
 void SessionTabWidget::buildPromptSliceTree()
@@ -219,6 +224,91 @@ void SessionTabWidget::onForkClicked()
     QMessageBox::information(this, "Fork", QString("Would fork session at slice %1").arg(sliceIndex));
 }
 
+void SessionTabWidget::onDeleteToEndClicked()
+{
+    auto selectedItems = m_promptSliceTree->selectedItems();
+    if (selectedItems.isEmpty())
+        return;
+
+    int sliceIndex = selectedItems.first()->data(0, Qt::UserRole).toInt();
+
+    // Stub: Just show a message box for now
+    QMessageBox::information(this, "Delete To End", QString("Would delete slices from %1 to end").arg(sliceIndex));
+
+    // TODO: Implement actual deletion logic here
+}
+
+void SessionTabWidget::onOpenMarkdownFileClicked()
+{
+    if (m_sessionFilePath.isEmpty()) {
+        QMessageBox::warning(this, "Open Markdown File", "Session file path is empty.");
+        return;
+    }
+
+    QUrl fileUrl = QUrl::fromLocalFile(m_sessionFilePath);
+    bool success = QDesktopServices::openUrl(fileUrl);
+    if (!success) {
+        QMessageBox::warning(this, "Open Markdown File", "Failed to open session markdown file.");
+    }
+}
+
+void SessionTabWidget::onOpenCacheClicked()
+{
+    QString cacheFolder = m_session.sessionCacheFolder();
+    if (cacheFolder.isEmpty() || !QDir(cacheFolder).exists()) {
+        QMessageBox::warning(this, "Open Cache", "Cache folder does not exist.");
+        return;
+    }
+
+    QUrl folderUrl = QUrl::fromLocalFile(cacheFolder);
+    bool success = QDesktopServices::openUrl(folderUrl);
+    if (!success) {
+        QMessageBox::warning(this, "Open Cache", "Failed to open cache folder.");
+    }
+}
+
+void SessionTabWidget::onOpenAIResponse(const QString &responseText)
+{
+    qDebug() << "SessionTabWidget received OpenAI response, length:" << responseText.length();
+
+    m_session.appendAssistantSlice(responseText);
+
+    buildPromptSliceTree();
+
+    // Show response in slice editor if last slice is assistant and selected
+    auto slices = m_session.slices();
+    int lastIndex = slices.size() - 1;
+    if (lastIndex >= 0) {
+        auto selectedItems = m_promptSliceTree->selectedItems();
+        if (!selectedItems.isEmpty() && selectedItems.first()->data(0, Qt::UserRole).toInt() == lastIndex) {
+            m_sliceEditor->setPlainText(responseText);
+        }
+    }
+
+    if (!saveSession()) {
+        QMessageBox::warning(this, "Error", "Failed to save session after assistant response.");
+    }
+
+    if (m_sendButton)
+        m_sendButton->setEnabled(true);
+}
+
+// onOpenAIError implementation (copy from your original code)
+void SessionTabWidget::onOpenAIError(const QString &errorString)
+{
+    QMessageBox::critical(this, "OpenAI API Error", errorString);
+    if (m_sendButton)
+        m_sendButton->setEnabled(true);
+}
+
+// contextMenuEvent implementation (empty stub or remove from header if unused)
+void SessionTabWidget::contextMenuEvent(QContextMenuEvent *event)
+{
+    // If you handle context menu via customContextMenuRequested signal,
+    // you can leave this empty or remove it from the header.
+    event->ignore();
+}
+
 void SessionTabWidget::onSendClicked()
 {
     // 1. Reload session file from disk to capture any external edits
@@ -276,11 +366,6 @@ void SessionTabWidget::onSendClicked()
 
     // Disable send button to prevent multiple sends
     m_sendButton->setEnabled(false);
-}
-
-QString SessionTabWidget::sessionFilePath() const
-{
-    return m_sessionFilePath;
 }
 
 bool SessionTabWidget::saveSession()

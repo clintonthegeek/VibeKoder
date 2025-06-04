@@ -6,6 +6,7 @@
 #include <QMap>
 #include <QSet>
 #include <QVariantMap>
+#include <QDir>
 
 #include "commandpipemanager.h"  // Add this include
 
@@ -36,6 +37,8 @@ public:
     bool load(const QString &filepath);
     bool save(const QString &filepath = QString());
     bool refreshCacheAndSave();
+    QString sessionCacheFolder() const;
+
 
     // New method for running command pipes
     bool runCommandPipes();
@@ -80,7 +83,6 @@ private:
 
     QString cacheIncludesInContent(const QString& content);
     QString sessionFolder() const;
-    QString sessionCacheFolder() const;
     QString sessionDocCacheFolder() const;
     QString sessionSrcCacheFolder() const;
     QString sessionCacheBaseFolder() const;

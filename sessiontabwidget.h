@@ -6,6 +6,7 @@
 #include <QTreeWidget>
 #include <QPushButton>
 #include <QTextEdit>
+#include <QMenu>
 
 #include "project.h"
 #include "session.h"
@@ -24,14 +25,14 @@ public:
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
-
-
-signals:
-    void requestSendPrompt(const QString &compiledPrompt);
+    void contextMenuEvent(QContextMenuEvent *event) override;
 
 private slots:
     void onSendClicked();
     void onForkClicked();
+    void onDeleteToEndClicked();
+    void onOpenMarkdownFileClicked();
+    void onOpenCacheClicked();
     void onPromptSliceSelected();
 
     void onOpenAIResponse(const QString &responseText);
@@ -51,9 +52,13 @@ private:
     // UI widgets
     QTreeWidget* m_promptSliceTree = nullptr;
     QPushButton* m_forkButton = nullptr;
+    QPushButton* m_openMarkdownButton = nullptr;
+    QPushButton* m_openCacheButton = nullptr;
     QTextEdit* m_sliceEditor = nullptr;
     QPlainTextEdit* m_appendUserPrompt = nullptr;
     QPushButton* m_sendButton = nullptr;
+
+    QMenu* m_contextMenu = nullptr;
 };
 
 #endif // SESSIONTABWIDGET_H
