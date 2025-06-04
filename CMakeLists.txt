@@ -48,6 +48,7 @@ else()
             draggabletabwidget.cpp
             draggabletabwidget.h
             detachedwindow.h detachedwindow.cpp
+            aibackend.h aibackend.cpp
         )
     endif()
 endif()
