@@ -10,6 +10,8 @@
 #include <QDesktopServices>
 #include <QUrl>
 #include <QContextMenuEvent>
+#include <QRandomGenerator>
+
 
 SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project, QWidget *parent)
     : QWidget(parent)
@@ -22,11 +24,25 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     }
     qDebug() << "[SessionTabWidget] Constructor for session:" << sessionPath << "Widget:" << this;
 
-    // Setup OpenAI connections
-    m_openAIRequest = new OpenAIRequest(this);
-    connect(m_openAIRequest, &OpenAIRequest::requestFinished, this, &SessionTabWidget::onOpenAIResponse);
-    connect(m_openAIRequest, &OpenAIRequest::requestError, this, &SessionTabWidget::onOpenAIError);
+    // Create OpenAIBackend instance
+    m_aiBackend = new OpenAIBackend(this);
 
+    // Set global config from project
+    QVariantMap config;
+    config["access_token"] = m_project->accessToken();
+    config["model"] = m_project->model();
+    config["max_tokens"] = m_project->maxTokens();
+    config["temperature"] = m_project->temperature();
+    config["top_p"] = m_project->topP();
+    config["frequency_penalty"] = m_project->frequencyPenalty();
+    config["presence_penalty"] = m_project->presencePenalty();
+    m_aiBackend->setConfig(config);
+
+    // Connect signals
+    connect(m_aiBackend, &AIBackend::partialResponse, this, &SessionTabWidget::onPartialResponse);
+    connect(m_aiBackend, &AIBackend::finished, this, &SessionTabWidget::onFinished);
+    connect(m_aiBackend, &AIBackend::errorOccurred, this, &SessionTabWidget::onErrorOccurred);
+    connect(m_aiBackend, &AIBackend::statusChanged, this, &SessionTabWidget::onStatusChanged);
     // UI setup
     auto mainLayout = new QVBoxLayout(this);
 
@@ -267,40 +283,6 @@ void SessionTabWidget::onOpenCacheClicked()
     }
 }
 
-void SessionTabWidget::onOpenAIResponse(const QString &responseText)
-{
-    qDebug() << "SessionTabWidget received OpenAI response, length:" << responseText.length();
-
-    m_session.appendAssistantSlice(responseText);
-
-    buildPromptSliceTree();
-
-    // Show response in slice editor if last slice is assistant and selected
-    auto slices = m_session.slices();
-    int lastIndex = slices.size() - 1;
-    if (lastIndex >= 0) {
-        auto selectedItems = m_promptSliceTree->selectedItems();
-        if (!selectedItems.isEmpty() && selectedItems.first()->data(0, Qt::UserRole).toInt() == lastIndex) {
-            m_sliceEditor->setPlainText(responseText);
-        }
-    }
-
-    if (!saveSession()) {
-        QMessageBox::warning(this, "Error", "Failed to save session after assistant response.");
-    }
-
-    if (m_sendButton)
-        m_sendButton->setEnabled(true);
-}
-
-// onOpenAIError implementation (copy from your original code)
-void SessionTabWidget::onOpenAIError(const QString &errorString)
-{
-    QMessageBox::critical(this, "OpenAI API Error", errorString);
-    if (m_sendButton)
-        m_sendButton->setEnabled(true);
-}
-
 // contextMenuEvent implementation (empty stub or remove from header if unused)
 void SessionTabWidget::contextMenuEvent(QContextMenuEvent *event)
 {
@@ -311,7 +293,7 @@ void SessionTabWidget::contextMenuEvent(QContextMenuEvent *event)
 
 void SessionTabWidget::onSendClicked()
 {
-    // 1. Reload session file from disk to capture any external edits
+    // Reload session file to capture external edits
     bool reloaded = m_session.load(m_sessionFilePath);
     if (!reloaded) {
         QMessageBox::warning(this, "Error", "Failed to reload session file before sending. Sending aborted.");
@@ -329,43 +311,115 @@ void SessionTabWidget::onSendClicked()
 
         m_appendUserPrompt->clear();
 
-        // Save session file
-        if (!saveSession()) {
+        if (!m_session.save(m_sessionFilePath)) {
             QMessageBox::warning(this, "Error", "Failed to save session after adding prompt.");
+            return;
         }
     }
 
-    // Step 3 addition: Run command pipes before caching includes and compiling prompt
+    // Run command pipes and refresh cache as before
     if (!m_session.runCommandPipes()) {
         QMessageBox::warning(this, "Error", "Failed to run command pipes in session.");
         return;
     }
-
-    // Perform caching of includes in the session slices, update slices, save session again
     if (!m_session.refreshCacheAndSave()) {
         QMessageBox::warning(this, "Error", "Failed to cache includes in session after adding prompt.");
-    } else {
-        // Reload prompt tree and slice editor to show updated cached content
-        loadSession();
+        return;
     }
 
-    QString prompt = m_session.compilePrompt();
-    qDebug() << "SessionTabWidget sending prompt (length)" << prompt.length();
+    loadSession();
 
-    // Prepare OpenAIRequest
-    m_openAIRequest->setAccessToken(m_project->accessToken());
-    m_openAIRequest->setModel(m_project->model());
-    m_openAIRequest->setMaxTokens(m_project->maxTokens());
-    m_openAIRequest->setTemperature(m_project->temperature());
-    m_openAIRequest->setTopP(m_project->topP());
-    m_openAIRequest->setFrequencyPenalty(m_project->frequencyPenalty());
-    m_openAIRequest->setPresencePenalty(m_project->presencePenalty());
-    m_openAIRequest->setPrompt(prompt);
+    // Prepare messages for AIBackend
+    QList<AIBackend::Message> messages;
+    for (const PromptSlice &slice : m_session.slices()) {
+        AIBackend::Message::Role role;
+        switch (slice.role) {
+        case MessageRole::System: role = AIBackend::Message::System; break;
+        case MessageRole::User: role = AIBackend::Message::User; break;
+        case MessageRole::Assistant: role = AIBackend::Message::Assistant; break;
+        default: role = AIBackend::Message::Unknown; break;
+        }
+        messages.append({role, slice.content});
+    }
 
-    m_openAIRequest->execute();
+    // Optional: per-request params (empty for now)
+    QVariantMap params;
+
+    // Start request
+    m_currentRequestId.clear();
+    m_partialResponseBuffer.clear();
+
+    m_currentRequestId = QStringLiteral("session_%1_%2")
+                             .arg(QDateTime::currentMSecsSinceEpoch())
+                             .arg(QRandomGenerator::global()->bounded(INT_MAX));
+
+
+    m_aiBackend->startRequest(messages, params, m_currentRequestId);
 
     // Disable send button to prevent multiple sends
     m_sendButton->setEnabled(false);
+}
+
+void SessionTabWidget::onPartialResponse(const QString &requestId, const QString &partialText)
+{
+    if (requestId != m_currentRequestId)
+        return;
+
+    m_partialResponseBuffer += partialText;
+
+    // Update slice editor with partial text (append)
+    m_sliceEditor->setPlainText(m_partialResponseBuffer);
+
+    // Optionally scroll to bottom
+    QTextCursor cursor = m_sliceEditor->textCursor();
+    cursor.movePosition(QTextCursor::End);
+    m_sliceEditor->setTextCursor(cursor);
+}
+
+void SessionTabWidget::onFinished(const QString &requestId, const QString &fullResponse)
+{
+    if (requestId != m_currentRequestId)
+        return;
+
+    // Append assistant slice with full response
+    m_session.appendAssistantSlice(fullResponse);
+    buildPromptSliceTree();
+
+    // Update slice editor with full response
+    m_sliceEditor->setPlainText(fullResponse);
+
+    if (!saveSession()) {
+        QMessageBox::warning(this, "Error", "Failed to save session after assistant response.");
+    }
+
+    m_sendButton->setEnabled(true);
+    m_currentRequestId.clear();
+    m_partialResponseBuffer.clear();
+}
+
+void SessionTabWidget::onErrorOccurred(const QString &requestId, const QString &errorString)
+{
+    if (requestId != m_currentRequestId)
+        return;
+
+    QMessageBox::critical(this, "AI Backend Error", errorString);
+
+    m_sendButton->setEnabled(true);
+    m_currentRequestId.clear();
+    m_partialResponseBuffer.clear();
+}
+
+void SessionTabWidget::updateBackendConfig(const QVariantMap &config)
+{
+    if (m_aiBackend) {
+        m_aiBackend->setConfig(config);
+    }
+}
+
+void SessionTabWidget::onStatusChanged(const QString &requestId, const QString &status)
+{
+    Q_UNUSED(requestId);
+    qDebug() << "[AIBackend] Status changed:" << status;
 }
 
 bool SessionTabWidget::saveSession()

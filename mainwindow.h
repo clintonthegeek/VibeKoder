@@ -39,6 +39,7 @@ private:
     void loadProjectDataToUi();
     void refreshSessionList();
     void tryAutoLoadProject();
+    void updateBackendConfigForAllSessions();
 
 
     Project* m_project = nullptr;
@@ -59,7 +60,6 @@ private:
     // Map session file paths to session tab widgets (avoid duplicates)
     QMap<QString, SessionTabWidget*> m_openSessions;
 
-    OpenAIRequest* m_openAIRequest = nullptr;
     QMap<QString, SessionTabWidget*> m_pendingSessions;
 
     void setupTabWidgetConnections(DraggableTabWidget* tabWidget);

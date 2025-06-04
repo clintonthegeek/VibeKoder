@@ -16,8 +16,6 @@
 #include <QMessageBox>
 #include <QDebug>
 
-#include "openai_request.h"  // Assuming you have this wrapper
-
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -374,6 +372,28 @@ void MainWindow::onTabMoved(QWidget* widget, DraggableTabWidget* oldParent, Drag
     qDebug() << "[MainWindow] Updated m_openSessions for session:" << sessionPath;
 }
 
+void MainWindow::updateBackendConfigForAllSessions()
+{
+    if (!m_project)
+        return;
+
+    QVariantMap config;
+    config["access_token"] = m_project->accessToken();
+    config["model"] = m_project->model();
+    config["max_tokens"] = m_project->maxTokens();
+    config["temperature"] = m_project->temperature();
+    config["top_p"] = m_project->topP();
+    config["frequency_penalty"] = m_project->frequencyPenalty();
+    config["presence_penalty"] = m_project->presencePenalty();
+
+    for (SessionTabWidget* tab : m_openSessions) {
+        if (tab) {
+            // Assuming you add a method to SessionTabWidget to update backend config
+            tab->updateBackendConfig(config);
+        }
+    }
+}
+
 void MainWindow::onOpenProject()
 {
     QString fileName = QFileDialog::getOpenFileName(this, "Open Project File", QString(), "Project Files (*.toml)");
@@ -393,6 +413,8 @@ void MainWindow::onOpenProject()
 
     loadProjectDataToUi();
     refreshSessionList();
+    updateBackendConfigForAllSessions();
+
     statusBar()->showMessage("Project loaded.");
 }
 

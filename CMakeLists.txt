@@ -40,15 +40,16 @@ else()
             ${PROJECT_SOURCES}
             project.h project.cpp
             session.h session.cpp
-            openai_message.cpp openai_message.h
-            openai_message_model.cpp openai_message_model.h
-            openai_request.cpp openai_request.h
+
+
+
             sessiontabwidget.h sessiontabwidget.cpp
             commandpipemanager.h commandpipemanager.cpp
             draggabletabwidget.cpp
             draggabletabwidget.h
             detachedwindow.h detachedwindow.cpp
             aibackend.h aibackend.cpp
+            openaibackend.h openaibackend.cpp
         )
     endif()
 endif()

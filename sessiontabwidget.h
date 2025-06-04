@@ -10,7 +10,8 @@
 
 #include "project.h"
 #include "session.h"
-#include "openai_request.h"
+#include "aibackend.h"
+#include "openaibackend.h"
 
 class SessionTabWidget : public QWidget
 {
@@ -22,6 +23,8 @@ public:
 
     bool saveSession();
     QString sessionFilePath() const;
+
+    void updateBackendConfig(const QVariantMap &config);
 
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
@@ -35,15 +38,18 @@ private slots:
     void onOpenCacheClicked();
     void onPromptSliceSelected();
 
-    void onOpenAIResponse(const QString &responseText);
-    void onOpenAIError(const QString &errorString);
+    void onPartialResponse(const QString &requestId, const QString &partialText);
+    void onFinished(const QString &requestId, const QString &fullResponse);
+    void onErrorOccurred(const QString &requestId, const QString &errorString);
+    void onStatusChanged(const QString &requestId, const QString &status);
 
 private:
     void loadSession();
     void buildPromptSliceTree();
     QString promptSliceSummary(const PromptSlice &slice) const;
 
-    OpenAIRequest *m_openAIRequest = nullptr;
+    AIBackend *m_aiBackend = nullptr;
+    QString m_currentRequestId;
 
     QString m_sessionFilePath;
     Project* m_project = nullptr;
@@ -59,6 +65,9 @@ private:
     QPushButton* m_sendButton = nullptr;
 
     QMenu* m_contextMenu = nullptr;
+
+    // Buffer for partial response text (optional)
+    QString m_partialResponseBuffer;
 };
 
 #endif // SESSIONTABWIDGET_H
