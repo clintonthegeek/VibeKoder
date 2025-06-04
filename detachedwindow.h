@@ -27,6 +27,9 @@ private slots:
     // Slot to handle tab removals; closes window if no tabs left
     void onTabRemoved(QWidget* widget);
 
+    // New slot for deferred check
+    void checkEmptyAndClose();
+
 private:
     DraggableTabWidget* m_tabWidget = nullptr;
 

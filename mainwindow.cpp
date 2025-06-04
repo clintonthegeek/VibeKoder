@@ -237,6 +237,12 @@ void MainWindow::onTabRemoved(QWidget* widget)
         return;
     }
 
+    if (widget == m_projectTab) {
+        qWarning() << "[MainWindow] Project tab removed unexpectedly!";
+        // Possibly restore or recreate Project tab here or prevent removal earlier
+        return;
+    }
+
     qDebug() << "[MainWindow] onTabRemoved called for widget:" << widget;
 
     QString sessionPathToRemove;

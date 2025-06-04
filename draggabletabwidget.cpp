@@ -131,6 +131,8 @@ void DraggableTabBar::dropEvent(QDropEvent* event)
         return;
     }
 
+
+
     QByteArray data = event->mimeData()->data("application/x-tab-index");
     bool ok = false;
     int sourceIndex = data.toInt(&ok);
@@ -330,6 +332,10 @@ void DraggableTabWidget::onTabCloseRequested(int index)
 void DraggableTabWidget::removeTab(int index)
 {
     QWidget* widget = this->widget(index);
+    if (widget == m_projectTab) {
+        qDebug() << "[DraggableTabWidget] Attempt to remove Project tab ignored";
+        return; // Prevent removing Project tab
+    }
     qDebug() << "[DraggableTabWidget] removeTab called for index:" << index << "widget:" << widget;
     QTabWidget::removeTab(index);
     if (widget) {

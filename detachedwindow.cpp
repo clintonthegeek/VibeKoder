@@ -76,10 +76,17 @@ void DetachedWindow::onTabRemoved(QWidget* widget)
     if (!m_tabWidget)
         return;
 
-    logState("After tabRemoved");
+    // Use QMetaObject::invokeMethod with Qt::QueuedConnection to defer the check
+    QMetaObject::invokeMethod(this, "checkEmptyAndClose", Qt::QueuedConnection);
+}
+
+// Add this new slot to DetachedWindow:
+void DetachedWindow::checkEmptyAndClose()
+{
+    logState("After tabRemoved (queued)");
 
     if (m_tabWidget->count() == 0) {
-        qDebug() << QString("[DetachedWindow #%1] No tabs left, closing window").arg(m_instanceId);
+        qDebug() << QString("[DetachedWindow #%1] No tabs left, closing window (queued)").arg(m_instanceId);
         close();
     }
 }
