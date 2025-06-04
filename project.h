@@ -1,14 +1,16 @@
 #ifndef PROJECT_H
 #define PROJECT_H
 
+#include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QMap>
 
-class Project
+class Project : public QObject
 {
+    Q_OBJECT
 public:
-    Project();
+    explicit Project(QObject *parent = nullptr);
 
     bool load(const QString &filepath);
     bool save(const QString &filepath);

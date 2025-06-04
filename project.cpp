@@ -8,8 +8,9 @@
 
 #include "toml.hpp"
 
-Project::Project()
-    : m_rootFolder()
+Project::Project(QObject *parent)
+    : QObject(parent)
+    , m_rootFolder()
     , m_docsFolder()
     , m_srcFolder()
     , m_sessionsFolder()

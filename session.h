@@ -28,11 +28,12 @@ struct PromptSlice {
 
 class Project; // forward decl
 
-class Session
+class Session : public QObject
 {
+    Q_OBJECT
 public:
-    explicit Session(Project *project = nullptr);
-    ~Session();
+    explicit Session(Project *project = nullptr, QObject *parent = nullptr);
+    ~Session() override;
 
     bool load(const QString &filepath);
     bool save(const QString &filepath = QString());

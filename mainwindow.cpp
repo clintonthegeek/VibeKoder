@@ -381,7 +381,7 @@ void MainWindow::onOpenProject()
         return;
 
     if (m_project)
-        delete m_project;
+        m_project->deleteLater();
 
     m_project = new Project();
     if (!m_project->load(fileName)) {

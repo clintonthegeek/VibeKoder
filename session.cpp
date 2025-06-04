@@ -44,16 +44,14 @@ static bool copyFileToCacheFolder(const QString &srcPath, const QString &cacheFo
 }
 
 
-Session::Session(Project *project)
-    : m_project(project)
+Session::Session(Project *project, QObject *parent)
+    : QObject(parent)
+    , m_project(project)
 {
 }
 
 Session::~Session()
 {
-    delete m_commandPipeManager;
-    m_commandPipeManager = nullptr;
-
 }
 
 
@@ -146,7 +144,7 @@ bool Session::load(const QString &filepath)
 
     // Initialize or update CommandPipeManager with correct session cache folder
     if (m_commandPipeManager) {
-        delete m_commandPipeManager;
+        m_commandPipeManager->deleteLater();
         m_commandPipeManager = nullptr;
     }
 
