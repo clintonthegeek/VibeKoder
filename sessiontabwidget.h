@@ -36,6 +36,7 @@ private slots:
     void onDeleteToEndClicked();
     void onOpenMarkdownFileClicked();
     void onOpenCacheClicked();
+    void onRefreshClicked();
     void onPromptSliceSelected();
 
     void onPartialResponse(const QString &requestId, const QString &partialText);

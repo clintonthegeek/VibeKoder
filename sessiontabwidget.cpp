@@ -107,6 +107,11 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     buttonLayout->addWidget(m_openCacheButton);
     connect(m_openCacheButton, &QPushButton::clicked, this, &SessionTabWidget::onOpenCacheClicked);
 
+    // Refresh from disk button
+    auto refreshButton = new QPushButton("Refresh", this);
+    buttonLayout->addWidget(refreshButton);
+    connect(refreshButton, &QPushButton::clicked, this, &SessionTabWidget::onRefreshClicked);
+
     // Spacer for future buttons
     buttonLayout->addStretch();
 
@@ -176,11 +181,18 @@ void SessionTabWidget::buildPromptSliceTree()
     m_promptSliceTree->clear();
 
     auto slices = m_session.slices();
+    qDebug() << "[buildPromptSliceTree] Total slices:" << slices.size();
 
     for (int i = 0; i < slices.size(); ++i) {
         const PromptSlice &slice = slices[i];
+        qDebug() << "[buildPromptSliceTree] Slice" << i
+                 << "role:" << (slice.role == MessageRole::Assistant ? "Assistant" :
+                                    slice.role == MessageRole::User ? "User" : "System")
+                 << "content length:" << slice.content.length()
+                 << "content preview:" << slice.content.left(30);
+
         auto item = new QTreeWidgetItem(m_promptSliceTree);
-        item->setData(0, Qt::UserRole, i);  // Store slice index
+        item->setData(0, Qt::UserRole, i);
         item->setText(0, slice.timestamp);
         switch (slice.role) {
         case MessageRole::User: item->setText(1, "User"); break;
@@ -192,9 +204,12 @@ void SessionTabWidget::buildPromptSliceTree()
 
     m_forkButton->setEnabled(false);
 
-    // Clear and disable slice editor on rebuild
-    m_sliceEditor->clear();
-    m_sliceEditor->setEnabled(false);
+    if (m_currentRequestId.isEmpty()) {
+        m_sliceEditor->blockSignals(true);
+        m_sliceEditor->clear();
+        m_sliceEditor->setEnabled(false);
+        m_sliceEditor->blockSignals(false);
+    }
 
     int count = m_promptSliceTree->topLevelItemCount();
     if (count > 0) {
@@ -215,46 +230,72 @@ QString SessionTabWidget::promptSliceSummary(const PromptSlice &slice) const
     return s;
 }
 
+void SessionTabWidget::onRefreshClicked()
+{
+    qDebug() << "[onRefreshClicked] User clicked Refresh.";
+    if (m_sessionFilePath.isEmpty()) {
+        QMessageBox::warning(this, "Refresh", "Session file path is empty.");
+        return;
+    }
+
+    if (!m_session.load(m_sessionFilePath)) {
+        QMessageBox::warning(this, "Refresh", "Failed to reload session file.");
+        return;
+    }
+
+    buildPromptSliceTree();
+
+    // Clear editor and disable until a slice is selected
+    m_sliceEditor->blockSignals(true);
+    m_sliceEditor->clear();
+    m_sliceEditor->setEnabled(false);
+    m_sliceEditor->blockSignals(false);
+
+    m_partialResponseBuffer.clear();
+
+    ///statusTip()->showMessage("Session refreshed from disk.", 2000);
+}
+
 void SessionTabWidget::onPromptSliceSelected()
 {
-    //qDebug() << "[onPromptSliceSelected] Current selected slice index:" << index;
-
     auto selectedItems = m_promptSliceTree->selectedItems();
     bool hasSelection = !selectedItems.isEmpty();
     m_forkButton->setEnabled(hasSelection);
 
     if (!hasSelection) {
+        m_sliceEditor->blockSignals(true);
         m_sliceEditor->clear();
         m_sliceEditor->setEnabled(false);
+        m_sliceEditor->blockSignals(false);
+        qDebug() << "[onPromptSliceSelected] No selection, editor cleared";
         return;
     }
 
-    if (selectedItems.isEmpty())
-        return;
-
     int index = selectedItems.first()->data(0, Qt::UserRole).toInt();
+    qDebug() << "[onPromptSliceSelected] Index:" << index << "Slice count:" << m_session.slices().size();
     if (index < 0 || index >= m_session.slices().size()) {
-        qDebug() << "[onPromptSliceSelected] Invalid slice index:" << index;
+        m_sliceEditor->blockSignals(true);
         m_sliceEditor->clear();
+        m_sliceEditor->setEnabled(false);
+        m_sliceEditor->blockSignals(false);
         return;
     }
 
     const PromptSlice &slice = m_session.slices().at(index);
-    qDebug() << "[onPromptSliceSelected] Loading slice index:" << index << "content preview:" << slice.content.left(100);
+    qDebug() << "[onPromptSliceSelected] Loading slice index:" << index
+             << "role:" << (slice.role == MessageRole::Assistant ? "Assistant" :
+                                slice.role == MessageRole::User ? "User" : "System")
+             << "content length:" << slice.content.length()
+             << "content preview:" << slice.content.left(30);
 
-    m_sliceEditor->blockSignals(true);
     m_updatingEditor = true;
+    m_sliceEditor->blockSignals(true);
 
-    if (slice.content.isEmpty()) {
-        m_sliceEditor->clear();
-        m_sliceEditor->setEnabled(false);
-    } else {
-        m_sliceEditor->setPlainText(slice.content);
-        m_sliceEditor->setEnabled(true);
-    }
+    m_sliceEditor->setPlainText(slice.content);
+    m_sliceEditor->setEnabled(!slice.content.isEmpty());
 
-    m_updatingEditor = false;
     m_sliceEditor->blockSignals(false);
+    m_updatingEditor = false;
 }
 
 void SessionTabWidget::onForkClicked()
@@ -386,16 +427,25 @@ void SessionTabWidget::onSendClicked()
         return;
     }
 
-    // Rebuild slice tree and select the assistant slice
-    buildPromptSliceTree();
-    int lastIndex = m_promptSliceTree->topLevelItemCount() - 1;
+    // Add new item to tree for the assistant slice without rebuilding entire tree
+    int lastIndex = m_session.slices().size() - 1;
     if (lastIndex >= 0) {
-        m_promptSliceTree->setCurrentItem(m_promptSliceTree->topLevelItem(lastIndex));
-    }
+        auto slice = m_session.slices().at(lastIndex);
+        auto item = new QTreeWidgetItem(m_promptSliceTree);
+        item->setData(0, Qt::UserRole, lastIndex);
+        item->setText(0, slice.timestamp);
+        switch (slice.role) {
+        case MessageRole::User: item->setText(1, "User"); break;
+        case MessageRole::Assistant: item->setText(1, "Assistant"); break;
+        case MessageRole::System: item->setText(1, "System"); break;
+        }
+        item->setText(2, promptSliceSummary(slice));
 
-    // Clear slice editor and prepare for streaming
-    m_sliceEditor->clear();
-    m_partialResponseBuffer.clear();
+        m_promptSliceTree->setCurrentItem(item);
+        m_sliceEditor->setEnabled(true);
+        m_sliceEditor->clear();
+        m_partialResponseBuffer.clear();
+    }
 
     // Prepare messages for AIBackend
     QVector<PromptSlice> slices = m_session.expandedSlices();
