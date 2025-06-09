@@ -20,9 +20,6 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     , m_session(project)
     , m_updatingEditor(false)
 {
-    if (!m_session.load(m_sessionFilePath)) {
-        qWarning() << "Failed loading session file " << m_sessionFilePath;
-    }
     qDebug() << "[SessionTabWidget] Constructor for session:" << sessionPath << "Widget:" << this;
 
     // Create OpenAIBackend instance
@@ -145,8 +142,8 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
         if (newContent.isEmpty() && m_session.promptSliceContent(idx).isEmpty())
             return;
 
-        qDebug() << "[m_sliceEditor::textChanged] Updating slice index:" << idx
-                 << "new content preview:\n" << newContent.left(200).replace('\n', "\\n");
+        // qDebug() << "[m_sliceEditor::textChanged] Updating slice index:" << idx
+        //          << "new content preview:\n" << newContent.left(200).replace('\n', "\\n");
 
         m_session.setPromptSliceContent(idx, newContent);
     });
@@ -170,10 +167,6 @@ void SessionTabWidget::loadSession()
     }
 
     buildPromptSliceTree();
-
-    // Clear slice editor and disable until selection
-    m_sliceEditor->clear();
-    m_sliceEditor->setEnabled(false);
 }
 
 void SessionTabWidget::buildPromptSliceTree()
@@ -185,11 +178,11 @@ void SessionTabWidget::buildPromptSliceTree()
 
     for (int i = 0; i < slices.size(); ++i) {
         const PromptSlice &slice = slices[i];
-        qDebug() << "[buildPromptSliceTree] Slice" << i
-                 << "role:" << (slice.role == MessageRole::Assistant ? "Assistant" :
-                                    slice.role == MessageRole::User ? "User" : "System")
-                 << "content length:" << slice.content.length()
-                 << "content preview:" << slice.content.left(30);
+        // qDebug() << "[buildPromptSliceTree] Slice" << i
+        //          << "role:" << (slice.role == MessageRole::Assistant ? "Assistant" :
+        //                             slice.role == MessageRole::User ? "User" : "System")
+        //          << "content length:" << slice.content.length()
+        //          << "content preview:" << slice.content.left(30);
 
         auto item = new QTreeWidgetItem(m_promptSliceTree);
         item->setData(0, Qt::UserRole, i);
@@ -272,7 +265,7 @@ void SessionTabWidget::onPromptSliceSelected()
     }
 
     int index = selectedItems.first()->data(0, Qt::UserRole).toInt();
-    qDebug() << "[onPromptSliceSelected] Index:" << index << "Slice count:" << m_session.slices().size();
+    // qDebug() << "[onPromptSliceSelected] Index:" << index << "Slice count:" << m_session.slices().size();
     if (index < 0 || index >= m_session.slices().size()) {
         m_sliceEditor->blockSignals(true);
         m_sliceEditor->clear();
@@ -282,11 +275,11 @@ void SessionTabWidget::onPromptSliceSelected()
     }
 
     const PromptSlice &slice = m_session.slices().at(index);
-    qDebug() << "[onPromptSliceSelected] Loading slice index:" << index
-             << "role:" << (slice.role == MessageRole::Assistant ? "Assistant" :
-                                slice.role == MessageRole::User ? "User" : "System")
-             << "content length:" << slice.content.length()
-             << "content preview:" << slice.content.left(30);
+    // qDebug() << "[onPromptSliceSelected] Loading slice index:" << index
+    //          << "role:" << (slice.role == MessageRole::Assistant ? "Assistant" :
+    //                             slice.role == MessageRole::User ? "User" : "System")
+    //          << "content length:" << slice.content.length()
+    //          << "content preview:" << slice.content.left(30);
 
     m_updatingEditor = true;
     m_sliceEditor->blockSignals(true);
