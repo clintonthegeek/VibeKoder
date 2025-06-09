@@ -68,6 +68,9 @@ private:
 
     // Buffer for partial response text (optional)
     QString m_partialResponseBuffer;
+    bool m_updatingEditor = false;
+
+
 };
 
 #endif // SESSIONTABWIDGET_H

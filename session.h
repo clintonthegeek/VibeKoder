@@ -45,7 +45,8 @@ public:
     bool runCommandPipes();
 
     // Accessors
-    QVector<PromptSlice> slices() const;
+    QVector<PromptSlice>& slices();
+    const QVector<PromptSlice>& slices() const;
 
     // Append new prompt slices with current timestamp
     void appendUserSlice(const QString &markdownContent);

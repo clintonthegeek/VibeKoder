@@ -54,7 +54,15 @@ Session::~Session()
 {
 }
 
-
+static QString messageRoleToString(MessageRole role)
+{
+    switch (role) {
+    case MessageRole::User: return "User";
+    case MessageRole::Assistant: return "Assistant";
+    case MessageRole::System: return "System";
+    default: return "Unknown";
+    }
+}
 
 bool Session::runCommandPipes()
 {
@@ -152,7 +160,12 @@ bool Session::load(const QString &filepath)
     qDebug() << "[Session::load] Initializing CommandPipeManager with cache folder:" << absCacheFolder;
     m_commandPipeManager = new CommandPipeManager(m_project, absCacheFolder);
 
-    return true;
+    for (int i = 0; i < m_slices.size(); ++i) {
+        const PromptSlice &slice = m_slices.at(i);
+        qDebug() << "[Session::load] Slice" << i << "role:" << messageRoleToString(slice.role) << "content preview:" << slice.content.left(100);
+    }
+
+    return true; // or false on failure
 }
 
 bool Session::refreshCacheAndSave()
@@ -555,7 +568,12 @@ QString Session::expandIncludesOnce(const QString &content)
     return result;
 }
 
-QVector<PromptSlice> Session::slices() const
+QVector<PromptSlice>& Session::slices()
+{
+    return m_slices;
+}
+
+const QVector<PromptSlice>& Session::slices() const
 {
     return m_slices;
 }
