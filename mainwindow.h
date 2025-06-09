@@ -32,6 +32,8 @@ private slots:
 
     void onTabRemoved(QWidget* widget);
     void onTabMoved(QWidget* widget, DraggableTabWidget* oldParent, DraggableTabWidget* newParent);
+    void onDetachedTabCloseRequested(int index);
+
 
 
 private:

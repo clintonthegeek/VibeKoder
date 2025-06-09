@@ -285,6 +285,12 @@ void MainWindow::dumpOpenSessions() const
             }
         }
     }
+    int projIndex = m_tabWidget->indexOf(m_projectTab);
+    qDebug() << "[MainWindow] Project tab index:" << projIndex
+             << "Tab count:" << m_tabWidget->count();
+    if (projIndex == -1) {
+        qWarning() << "[MainWindow] Project tab is missing from main tab widget!";
+    }
     qDebug() << "=== End Dump ===";
 }
 
@@ -305,9 +311,17 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
         connect(dwTabWidget, &DraggableTabWidget::tabRemoved, this, &MainWindow::onTabRemoved);
     }
 
+    //
+    if (dwTabWidget) {
+        connect(dwTabWidget, &DraggableTabWidget::tabCloseRequested, this, &MainWindow::onDetachedTabCloseRequested);
+        connect(dwTabWidget, &DraggableTabWidget::tabRemoved, this, &MainWindow::onTabRemoved);
+    }
+
     // Connect window destroyed to clean up m_openSessions
-    connect(newWindow, &QObject::destroyed, this, [this, newWindow]() {
-        qDebug() << "[MainWindow] DetachedWindow destroyed:" << newWindow;
+    connect(newWindow, &QObject::destroyed, this, [this]() {
+        QObject* senderObj = sender();
+        if (!senderObj)
+            return;
         QList<QString> keysToRemove;
         for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
             QWidget* w = it.value();
@@ -316,7 +330,7 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
             QWidget* p = w->parentWidget();
             bool belongsToWindow = false;
             while (p) {
-                if (p == newWindow) {
+                if (p == senderObj) {
                     belongsToWindow = true;
                     break;
                 }
@@ -346,6 +360,48 @@ void MainWindow::onCreateNewWindowWithTab(const QRect &winRect, const DraggableT
     }
 
     qDebug() << "[MainWindow] New detached window shown";
+}
+
+void MainWindow::onDetachedTabCloseRequested(int index)
+{
+    auto dwTabWidget = qobject_cast<DraggableTabWidget*>(sender());
+    if (!dwTabWidget)
+        return;
+
+    QWidget* widget = dwTabWidget->widget(index);
+    if (!widget)
+        return;
+
+    // Prevent closing project tab if any (optional)
+    if (widget == m_projectTab) {
+        qDebug() << "[MainWindow] Close requested on Project tab - ignored";
+        return;
+    }
+
+    dwTabWidget->removeTab(index);
+    widget->deleteLater();
+
+    // Remove from m_openSessions
+    QString sessionPathToRemove;
+    for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
+        if (it.value() == widget) {
+            sessionPathToRemove = it.key();
+            break;
+        }
+    }
+    if (!sessionPathToRemove.isEmpty()) {
+        m_openSessions.remove(sessionPathToRemove);
+        qDebug() << "[MainWindow] Removed session from m_openSessions:" << sessionPathToRemove;
+    }
+
+    // Close detached window if empty
+    if (dwTabWidget->count() == 0) {
+        QWidget* w = dwTabWidget->window();
+        if (w) {
+            qDebug() << "[MainWindow] Closing detached window due to empty tabs:" << w;
+            w->close();
+        }
+    }
 }
 
 void MainWindow::onTabMoved(QWidget* widget, DraggableTabWidget* oldParent, DraggableTabWidget* newParent)
@@ -527,6 +583,12 @@ void MainWindow::onCreateSessionFromTemplate()
         m_tabWidget->addTab(tab, filename);
         m_tabWidget->setCurrentWidget(tab);
 
+        connect(tab, &QObject::destroyed, this, [this, newSessionPath]() {
+            if (m_openSessions.contains(newSessionPath)) {
+                m_openSessions.remove(newSessionPath);
+                qDebug() << "[MainWindow] Removed session from m_openSessions due to widget destruction:" << newSessionPath;
+            }
+        });
         // Connect session tab send prompt signal to your OpenAI request handler here,
         // e.g., connect(tab, &SessionTabWidget::requestSendPrompt, ...)
     }
@@ -557,7 +619,16 @@ void MainWindow::onOpenSelectedSession()
         m_openSessions.insert(sessionPath, tab);
         m_tabWidget->addTab(tab, sessionName);
         m_tabWidget->setCurrentWidget(tab);
+
+        connect(tab, &QObject::destroyed, this, [this, sessionPath]() {
+            if (m_openSessions.contains(sessionPath)) {
+                m_openSessions.remove(sessionPath);
+                qDebug() << "[MainWindow] Removed session from m_openSessions due to widget destruction:" << sessionPath;
+            }
+        });
     }
+
+
 
     statusBar()->showMessage(QString("Opened session %1").arg(sessionName));
 }

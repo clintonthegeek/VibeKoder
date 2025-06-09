@@ -287,9 +287,11 @@ void DraggableTabWidget::onDetachTabRequested(int index, const QPoint& globalPos
     tabInfo.toolTip = tabToolTip(index);
     tabInfo.whatsThis = tabWhatsThis(index);
 
-    emit createNewWindow(QRect(globalPos, QSize(600, 400)), tabInfo);
-
+    // Remove tab first to keep internal state consistent
     removeTab(index);
+
+    // Now emit signal to create new window with the widget
+    emit createNewWindow(QRect(globalPos, QSize(600, 400)), tabInfo);
 
     if (count() == 0 && !m_isMainTabWidget) {
         QWidget* w = window();
