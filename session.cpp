@@ -531,7 +531,18 @@ QString Session::expandIncludesRecursive(const QString &content,
         return result;
 }
 
-QString Session::expandIncludesOnce(const QString &content)
+QVector<PromptSlice> Session::expandedSlices() const
+{
+    QVector<PromptSlice> expanded;
+    for (const auto &slice : m_slices) {
+        PromptSlice copy = slice;
+        copy.content = expandIncludesOnce(slice.content);
+        expanded.append(copy);
+    }
+    return expanded;
+}
+
+QString Session::expandIncludesOnce(const QString &content) const
 {
     static const QRegularExpression cachedMarkerRe(R"(<!--\s*cached:\s*(.*?)\s*-->)", QRegularExpression::CaseInsensitiveOption);
 

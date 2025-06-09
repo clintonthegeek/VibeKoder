@@ -65,6 +65,8 @@ public:
     QString commandPipeOutput(const QString& key) const;
 
     QString compiledRawMarkdown() const;
+    QVector<PromptSlice> expandedSlices() const;
+
 
 private:
     QString m_filepath;
@@ -81,7 +83,7 @@ private:
                                     QSet<QString> &visitedFiles,
                                     bool expandIncludeMarkers = true);
 
-    QString expandIncludesOnce(const QString &content);
+    QString expandIncludesOnce(const QString &content) const;
 
     QString cacheIncludesInContent(const QString& content);
     QString sessionFolder() const;

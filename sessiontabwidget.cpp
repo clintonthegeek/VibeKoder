@@ -331,7 +331,6 @@ void SessionTabWidget::onSendClicked()
 
     buildPromptSliceTree();
 
-    // Read user input before clearing
     QString newPrompt = m_appendUserPrompt->toPlainText().trimmed();
 
     if (!newPrompt.isEmpty()) {
@@ -344,10 +343,22 @@ void SessionTabWidget::onSendClicked()
             return;
         }
 
+        // Run command pipes to generate cached files (e.g., amalgamate source)
+        if (!m_session.runCommandPipes()) {
+            QMessageBox::warning(this, "Error", "Failed to run command pipes in session.");
+            return;
+        }
+
+        // Cache includes and save session
+        if (!m_session.refreshCacheAndSave()) {
+            QMessageBox::warning(this, "Error", "Failed to cache includes in session after running command pipes.");
+            return;
+        }
+
         // Clear input after saving
         m_appendUserPrompt->clear();
 
-        // Rebuild slice tree to include new user slice
+        // Rebuild slice tree to include new user slice and cached changes
         buildPromptSliceTree();
     } else {
         // No prompt to send, ignore
@@ -363,6 +374,18 @@ void SessionTabWidget::onSendClicked()
         return;
     }
 
+    // Run command pipes to generate cached files (e.g., amalgamate source)
+    if (!m_session.runCommandPipes()) {
+        QMessageBox::warning(this, "Error", "Failed to run command pipes in session.");
+        return;
+    }
+
+    // Cache includes and save session
+    if (!m_session.refreshCacheAndSave()) {
+        QMessageBox::warning(this, "Error", "Failed to cache includes in session after running command pipes.");
+        return;
+    }
+
     // Rebuild slice tree and select the assistant slice
     buildPromptSliceTree();
     int lastIndex = m_promptSliceTree->topLevelItemCount() - 1;
@@ -375,8 +398,9 @@ void SessionTabWidget::onSendClicked()
     m_partialResponseBuffer.clear();
 
     // Prepare messages for AIBackend
+    QVector<PromptSlice> slices = m_session.expandedSlices();
     QList<AIBackend::Message> messages;
-    for (const PromptSlice &slice : m_session.slices()) {
+    for (const PromptSlice &slice : slices) {
         AIBackend::Message::Role role;
         switch (slice.role) {
         case MessageRole::System: role = AIBackend::Message::System; break;
