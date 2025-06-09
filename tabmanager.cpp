@@ -90,11 +90,9 @@ void TabManager::closeSession(const QString& sessionFilePath)
     if (!tabWidget)
         return;
 
-    int idx = tabWidget->indexOf(tab);
-    if (idx != -1) {
-        tabWidget->removeTab(idx);
-        tab->deleteLater();
-    }
+    // Remove tab by widget pointer for safety
+    tabWidget->removeTab(tab);
+    tab->deleteLater();
 
     m_openSessions.remove(absPath);
 
@@ -153,10 +151,8 @@ void TabManager::onTabMoved(QWidget* widget, DraggableTabWidget* /*oldParent*/, 
     }
 
     if (sessionPath.isEmpty()) {
-        // Possibly a new tab moved in; try to detect session path from widget
         auto sessionTab = qobject_cast<SessionTabWidget*>(widget);
         if (sessionTab) {
-            // You might want to add a method to get session file path from SessionTabWidget
             sessionPath = sessionTab->sessionFilePath();
             if (!sessionPath.isEmpty()) {
                 m_openSessions.insert(sessionPath, sessionTab);
@@ -168,7 +164,6 @@ void TabManager::onTabMoved(QWidget* widget, DraggableTabWidget* /*oldParent*/, 
             qWarning() << "[TabManager] onTabMoved: Widget not a SessionTabWidget";
         }
     } else {
-        // Update map in case widget pointer changed (usually same pointer)
         m_openSessions[sessionPath] = qobject_cast<SessionTabWidget*>(widget);
         qDebug() << "[TabManager] Updated openSessions for session:" << sessionPath;
     }
@@ -183,7 +178,24 @@ void TabManager::onTabRemoved(QWidget* widget)
         return;
     }
 
-    // Remove from openSessions if found
+    // Check if widget is still in any tab widget
+    bool stillInTabs = false;
+    QWidget* parentWidget = widget->parentWidget();
+    while (parentWidget) {
+        if (auto tabWidget = qobject_cast<QTabWidget*>(parentWidget)) {
+            if (tabWidget->indexOf(widget) != -1) {
+                stillInTabs = true;
+                break;
+            }
+        }
+        parentWidget = parentWidget->parentWidget();
+    }
+
+    if (stillInTabs) {
+        qDebug() << "[TabManager] onTabRemoved: Widget still present in a tab widget, ignoring removal:" << widget;
+        return;
+    }
+
     QString sessionPathToRemove;
     for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
         if (it.value() == widget) {
@@ -200,14 +212,18 @@ void TabManager::onTabRemoved(QWidget* widget)
 
     ensureProjectTabPresent();
 
-    // If widget was in a detached window, check if window should close
+    // Close detached window if empty
     auto tabWidget = qobject_cast<DraggableTabWidget*>(widget->parentWidget());
-    if (tabWidget && tabWidget != m_mainTabWidget && tabWidget->count() == 0) {
-        QWidget* w = tabWidget->window();
-        if (w) {
-            qDebug() << "[TabManager] Closing detached window due to empty tabs:" << w;
-            w->close();
-        }
+    if (tabWidget && tabWidget != m_mainTabWidget) {
+        QTimer::singleShot(0, [tabWidget, this]() {
+            if (tabWidget->count() == 0) {
+                QWidget* w = tabWidget->window();
+                if (w) {
+                    qDebug() << "[TabManager] Closing detached window due to empty tabs:" << w;
+                    w->close();
+                }
+            }
+        });
     }
 }
 
@@ -227,7 +243,10 @@ void TabManager::onTabCloseRequested(int index)
         return;
     }
 
-    tabWidget->removeTab(index);
+    // Use the widget-based removeTab method for safety
+    tabWidget->removeTab(widget);
+
+    // Delete the widget after removal
     widget->deleteLater();
 
     // onTabRemoved will handle map cleanup and window closing

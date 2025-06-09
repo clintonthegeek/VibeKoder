@@ -113,10 +113,11 @@ void MainWindow::setupUi()
             return;
         }
 
-        m_tabWidget->removeTab(index);
+        // Remove tab by widget pointer for safety
+        m_tabWidget->removeTab(widget);
         widget->deleteLater();
 
-        // Remove from m_openSessions
+        // Remove from m_openSessions by widget pointer
         QString sessionPathToRemove;
         for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
             if (it.value() == widget) {

@@ -35,7 +35,7 @@ public:
     };
 
     QWidget* createNewWindowWidget(const QRect& winRect, const TabInfo& tabInfo);
-    void removeTab(int index);
+    void removeTab(QWidget* widget);
 
 signals:
     void createNewWindow(const QRect& winRect, const TabInfo& tabInfo);
