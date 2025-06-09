@@ -30,14 +30,6 @@ private slots:
     void onCreateSessionFromTemplate();
     void onOpenSelectedSession();
 
-    void onTabRemovedFromWidget(DraggableTabWidget* tabWidget, int index, QWidget* widget);
-
-    void onTabRemoved(QWidget* widget);
-    void onTabMoved(QWidget* widget, DraggableTabWidget* oldParent, DraggableTabWidget* newParent);
-    void onDetachedTabCloseRequested(int index);
-
-
-
 private:
     void setupUi();
     void loadProjectDataToUi();
@@ -50,7 +42,6 @@ private:
 
     // UI widgets
     DraggableTabWidget* m_tabWidget = nullptr;
-    void onCreateNewWindowWithTab(const QRect &winRect, const DraggableTabWidget::TabInfo &tabInfo);
 
 
     // Project tab widgets
@@ -68,7 +59,6 @@ private:
 
     QMap<QString, SessionTabWidget*> m_pendingSessions;
 
-    void setupTabWidgetConnections(DraggableTabWidget* tabWidget);
     void dumpOpenSessions() const;
 
 

@@ -14,9 +14,6 @@ DetachedWindow::DetachedWindow(TabManager* tabManager, QWidget* parent)
     m_tabWidget->setIsMainTabWidget(false);
     setCentralWidget(m_tabWidget);
 
-    connect(m_tabWidget, &DraggableTabWidget::createNewWindow,
-            this, &DetachedWindow::onCreateNewWindow);
-
     connect(m_tabWidget, &DraggableTabWidget::tabRemoved,
             this, &DetachedWindow::onTabRemoved);
 
@@ -55,19 +52,19 @@ void DetachedWindow::addTabFromInfo(const DraggableTabWidget::TabInfo& tabInfo)
     logState("After addTabFromInfo");
 }
 
-void DetachedWindow::onCreateNewWindow(const QRect& winRect, const DraggableTabWidget::TabInfo& tabInfo)
-{
-    qDebug() << QString("[DetachedWindow #%1] Creating new detached window for tab '%2' (widget %3)")
-    .arg(m_instanceId).arg(tabInfo.text).arg((quintptr)tabInfo.widget);
+// void DetachedWindow::onCreateNewWindow(const QRect& winRect, const DraggableTabWidget::TabInfo& tabInfo)
+// {
+//     qDebug() << QString("[DetachedWindow #%1] Creating new detached window for tab '%2' (widget %3)")
+//     .arg(m_instanceId).arg(tabInfo.text).arg((quintptr)tabInfo.widget);
 
-    DetachedWindow* newWindow = new DetachedWindow(m_tabManager);
-    newWindow->addTabFromInfo(tabInfo);
-    newWindow->setGeometry(winRect);
-    newWindow->show();
+//     DetachedWindow* newWindow = new DetachedWindow(m_tabManager);
+//     newWindow->addTabFromInfo(tabInfo);
+//     newWindow->setGeometry(winRect);
+//     newWindow->show();
 
-    qDebug() << QString("[DetachedWindow #%1] Created new detached window %2")
-                    .arg(m_instanceId).arg((quintptr)newWindow);
-}
+//     qDebug() << QString("[DetachedWindow #%1] Created new detached window %2")
+//                     .arg(m_instanceId).arg((quintptr)newWindow);
+// }
 
 void DetachedWindow::onTabRemoved(QWidget* widget)
 {
@@ -85,10 +82,14 @@ void DetachedWindow::onTabRemoved(QWidget* widget)
 // Add this new slot to DetachedWindow:
 void DetachedWindow::checkEmptyAndClose()
 {
-    logState("After tabRemoved (queued)");
+    if (!m_tabWidget)
+        return;
 
-    if (m_tabWidget->count() == 0) {
-        qDebug() << QString("[DetachedWindow #%1] No tabs left, closing window (queued)").arg(m_instanceId);
+    int count = m_tabWidget->count();
+    qDebug() << QString("[DetachedWindow #%1] checkEmptyAndClose - Tab count: %2").arg(m_instanceId).arg(count);
+
+    if (count == 0) {
+        qDebug() << QString("[DetachedWindow #%1] No tabs left, closing window").arg(m_instanceId);
         close();
     }
 }

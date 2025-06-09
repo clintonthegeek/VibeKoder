@@ -6,8 +6,8 @@
 #include <QSet>
 #include <QPointer>
 #include <QRect>
+#include "draggabletabwidget.h"
 
-class DraggableTabWidget;
 class SessionTabWidget;
 class Project;
 class DetachedWindow;
@@ -45,7 +45,7 @@ private slots:
 
 private:
     void setupTabWidgetConnections(DraggableTabWidget* tabWidget);
-    void createDetachedWindowWithTab(const QRect& winRect, SessionTabWidget* tab);
+    void createDetachedWindowWithTab(const QRect& winRect, const DraggableTabWidget::TabInfo& tabInfo);
 
     DraggableTabWidget* m_mainTabWidget = nullptr;
     QWidget* m_projectTab = nullptr;

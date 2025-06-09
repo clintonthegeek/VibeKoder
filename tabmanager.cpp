@@ -28,7 +28,7 @@ TabManager::~TabManager()
     // Clean up detached windows
     for (DetachedWindow* dw : m_detachedWindows) {
         if (dw)
-            dw->close();
+            dw->deleteLater();
     }
     m_detachedWindows.clear();
 }
@@ -133,7 +133,7 @@ void TabManager::setupTabWidgetConnections(DraggableTabWidget* tabWidget)
             qWarning() << "[TabManager] createNewWindow: widget is not a SessionTabWidget";
             return;
         }
-        createDetachedWindowWithTab(rect, tab);
+        createDetachedWindowWithTab(rect, tabInfo);
     });
 }
 
@@ -144,7 +144,6 @@ void TabManager::onTabMoved(QWidget* widget, DraggableTabWidget* /*oldParent*/, 
         return;
     }
 
-    // Find session path by widget pointer
     QString sessionPath;
     for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
         if (it.value() == widget) {
@@ -154,14 +153,25 @@ void TabManager::onTabMoved(QWidget* widget, DraggableTabWidget* /*oldParent*/, 
     }
 
     if (sessionPath.isEmpty()) {
-        qWarning() << "[TabManager] onTabMoved: Widget not found in openSessions";
-        return;
+        // Possibly a new tab moved in; try to detect session path from widget
+        auto sessionTab = qobject_cast<SessionTabWidget*>(widget);
+        if (sessionTab) {
+            // You might want to add a method to get session file path from SessionTabWidget
+            sessionPath = sessionTab->sessionFilePath();
+            if (!sessionPath.isEmpty()) {
+                m_openSessions.insert(sessionPath, sessionTab);
+                qDebug() << "[TabManager] onTabMoved: Added new session tab to openSessions:" << sessionPath;
+            } else {
+                qWarning() << "[TabManager] onTabMoved: SessionTabWidget has empty sessionFilePath";
+            }
+        } else {
+            qWarning() << "[TabManager] onTabMoved: Widget not a SessionTabWidget";
+        }
+    } else {
+        // Update map in case widget pointer changed (usually same pointer)
+        m_openSessions[sessionPath] = qobject_cast<SessionTabWidget*>(widget);
+        qDebug() << "[TabManager] Updated openSessions for session:" << sessionPath;
     }
-
-    // Update map in case widget pointer changed (usually same pointer)
-    m_openSessions[sessionPath] = qobject_cast<SessionTabWidget*>(widget);
-
-    qDebug() << "[TabManager] Updated openSessions for session:" << sessionPath;
 
     ensureProjectTabPresent();
 }
@@ -223,26 +233,26 @@ void TabManager::onTabCloseRequested(int index)
     // onTabRemoved will handle map cleanup and window closing
 }
 
-void TabManager::createDetachedWindowWithTab(const QRect& winRect, SessionTabWidget* tab)
+void TabManager::createDetachedWindowWithTab(const QRect& winRect, const DraggableTabWidget::TabInfo& tabInfo)
 {
-    if (!tab)
+    if (!tabInfo.widget)
         return;
 
-    // Remove tab from current tab widget first
-    auto oldTabWidget = qobject_cast<DraggableTabWidget*>(tab->parentWidget());
-    if (oldTabWidget) {
-        int idx = oldTabWidget->indexOf(tab);
-        if (idx != -1) {
-            oldTabWidget->removeTab(idx);
-        }
-    }
+    // // Remove tab from current tab widget first
+    // auto oldTabWidget = qobject_cast<DraggableTabWidget*>(tabInfo.widget->parentWidget());
+    // if (oldTabWidget) {
+    //     int idx = oldTabWidget->indexOf(tabInfo.widget);
+    //     if (idx != -1) {
+    //         oldTabWidget->removeTab(idx);
+    //     }
+    // }
 
     // Create new detached window
     DetachedWindow* newWindow = new DetachedWindow(this);
     m_detachedWindows.insert(newWindow);
 
-    // Add tab to detached window's tab widget
-    newWindow->addTabFromInfo({tab, tab->windowTitle(), tab->windowIcon(), QString(), QString()});
+    // Add tab to detached window's tab widget with proper info
+    newWindow->addTabFromInfo(tabInfo);
     newWindow->setGeometry(winRect);
     newWindow->show();
 
@@ -255,7 +265,7 @@ void TabManager::createDetachedWindowWithTab(const QRect& winRect, SessionTabWid
     // Remove from set when window destroyed
     connect(newWindow, &QObject::destroyed, this, &TabManager::onDetachedWindowDestroyed);
 
-    qDebug() << "[TabManager] Created detached window with tab:" << tab;
+    qDebug() << "[TabManager] Created detached window with tab:" << tabInfo.widget;
 }
 
 void TabManager::onDetachedWindowDestroyed(QObject* obj)

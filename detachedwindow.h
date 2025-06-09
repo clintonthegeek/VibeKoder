@@ -24,7 +24,7 @@ signals:
 
 private slots:
     // Slot to handle requests to create a new detached window from this window
-    void onCreateNewWindow(const QRect& winRect, const DraggableTabWidget::TabInfo& tabInfo);
+    // void onCreateNewWindow(const QRect& winRect, const DraggableTabWidget::TabInfo& tabInfo);
 
     // Slot to handle tab removals; closes window if no tabs left
     void onTabRemoved(QWidget* widget);

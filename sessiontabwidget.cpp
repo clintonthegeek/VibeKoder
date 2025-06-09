@@ -210,6 +210,11 @@ void SessionTabWidget::buildPromptSliceTree()
     }
 }
 
+QString SessionTabWidget::sessionFilePath() const
+{
+    return m_sessionFilePath;
+}
+
 QString SessionTabWidget::promptSliceSummary(const PromptSlice &slice) const
 {
     QString s = slice.content.trimmed();
