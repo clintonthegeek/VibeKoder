@@ -3,8 +3,9 @@
 
 int DetachedWindow::s_nextInstanceId = 1;
 
-DetachedWindow::DetachedWindow(QWidget* parent)
+DetachedWindow::DetachedWindow(TabManager* tabManager, QWidget* parent)
     : QMainWindow(parent)
+    , m_tabManager(tabManager)
 {
     m_instanceId = s_nextInstanceId++;
     qDebug() << QString("[DetachedWindow #%1] Constructor called").arg(m_instanceId);
@@ -59,7 +60,7 @@ void DetachedWindow::onCreateNewWindow(const QRect& winRect, const DraggableTabW
     qDebug() << QString("[DetachedWindow #%1] Creating new detached window for tab '%2' (widget %3)")
     .arg(m_instanceId).arg(tabInfo.text).arg((quintptr)tabInfo.widget);
 
-    DetachedWindow* newWindow = new DetachedWindow();
+    DetachedWindow* newWindow = new DetachedWindow(m_tabManager);
     newWindow->addTabFromInfo(tabInfo);
     newWindow->setGeometry(winRect);
     newWindow->show();
@@ -73,8 +74,9 @@ void DetachedWindow::onTabRemoved(QWidget* widget)
     qDebug() << QString("[DetachedWindow #%1] Tab removed: widget %2")
     .arg(m_instanceId).arg((quintptr)widget);
 
-    if (!m_tabWidget)
-        return;
+    if (m_tabManager) {
+        m_tabManager->onTabRemoved(widget);
+    }
 
     // Use QMetaObject::invokeMethod with Qt::QueuedConnection to defer the check
     QMetaObject::invokeMethod(this, "checkEmptyAndClose", Qt::QueuedConnection);

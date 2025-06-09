@@ -11,6 +11,8 @@ class QPushButton;
 
 #include "project.h"
 #include "sessiontabwidget.h"
+#include "tabmanager.h"
+
 
 class MainWindow : public QMainWindow
 {
@@ -58,6 +60,8 @@ private:
     QListWidget* m_sessionList = nullptr;
     QPushButton* m_createSessionBtn = nullptr;
     QPushButton* m_openSessionBtn = nullptr;
+
+    TabManager* m_tabManager = nullptr;
 
     // Map session file paths to session tab widgets (avoid duplicates)
     QMap<QString, SessionTabWidget*> m_openSessions;

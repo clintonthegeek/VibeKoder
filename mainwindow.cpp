@@ -20,6 +20,7 @@ MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
     setupUi();
+    m_tabManager = new TabManager(m_tabWidget, m_projectTab, m_project, this);
     tryAutoLoadProject();
 }
 
@@ -575,23 +576,8 @@ void MainWindow::onCreateSessionFromTemplate()
     newSessionFile.close();
 
     // Open newly created session tab
-    if (m_openSessions.contains(newSessionPath)) {
-        m_tabWidget->setCurrentWidget(m_openSessions.value(newSessionPath));
-    } else {
-        SessionTabWidget *tab = new SessionTabWidget(newSessionPath, m_project, this);
-        m_openSessions.insert(newSessionPath, tab);
-        m_tabWidget->addTab(tab, filename);
-        m_tabWidget->setCurrentWidget(tab);
-
-        connect(tab, &QObject::destroyed, this, [this, newSessionPath]() {
-            if (m_openSessions.contains(newSessionPath)) {
-                m_openSessions.remove(newSessionPath);
-                qDebug() << "[MainWindow] Removed session from m_openSessions due to widget destruction:" << newSessionPath;
-            }
-        });
-        // Connect session tab send prompt signal to your OpenAI request handler here,
-        // e.g., connect(tab, &SessionTabWidget::requestSendPrompt, ...)
-    }
+    SessionTabWidget* tab = m_tabManager->openSession(newSessionPath);
+    m_tabWidget->setCurrentWidget(tab);
 
     refreshSessionList();
     statusBar()->showMessage(QString("Created session %1").arg(filename));
@@ -612,23 +598,8 @@ void MainWindow::onOpenSelectedSession()
     QString sessionName = selItem->text();
     QString sessionPath = QDir(m_project->sessionsFolder()).filePath(sessionName);
 
-    if (m_openSessions.contains(sessionPath)) {
-        m_tabWidget->setCurrentWidget(m_openSessions.value(sessionPath));
-    } else {
-        SessionTabWidget *tab = new SessionTabWidget(sessionPath, m_project, this);
-        m_openSessions.insert(sessionPath, tab);
-        m_tabWidget->addTab(tab, sessionName);
-        m_tabWidget->setCurrentWidget(tab);
-
-        connect(tab, &QObject::destroyed, this, [this, sessionPath]() {
-            if (m_openSessions.contains(sessionPath)) {
-                m_openSessions.remove(sessionPath);
-                qDebug() << "[MainWindow] Removed session from m_openSessions due to widget destruction:" << sessionPath;
-            }
-        });
-    }
-
-
+    SessionTabWidget* tab = m_tabManager->openSession(sessionPath);
+    m_tabWidget->setCurrentWidget(tab);
 
     statusBar()->showMessage(QString("Opened session %1").arg(sessionName));
 }

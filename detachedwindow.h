@@ -5,12 +5,14 @@
 
 #include <QMainWindow>
 #include "draggabletabwidget.h"
+#include "tabmanager.h"
+
 
 class DetachedWindow : public QMainWindow
 {
     Q_OBJECT
 public:
-    explicit DetachedWindow(QWidget* parent = nullptr);
+    explicit DetachedWindow(TabManager* tabManager = nullptr, QWidget* parent = nullptr);
     ~DetachedWindow();
 
     // Adds a tab to this window's tab widget from the given TabInfo
@@ -32,6 +34,8 @@ private slots:
 
 private:
     DraggableTabWidget* m_tabWidget = nullptr;
+
+    TabManager* m_tabManager = nullptr;
 
     static int s_nextInstanceId;
     int m_instanceId = -1;

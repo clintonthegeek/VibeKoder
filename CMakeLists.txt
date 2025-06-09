@@ -50,6 +50,7 @@ else()
             detachedwindow.h detachedwindow.cpp
             aibackend.h aibackend.cpp
             openaibackend.h openaibackend.cpp
+            tabmanager.h tabmanager.cpp
         )
     endif()
 endif()
