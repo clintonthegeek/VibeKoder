@@ -6,6 +6,14 @@
 
 #include <QDebug>
 #include <QFileInfo>
+#include <QPointer>
+#include <QHash>
+
+inline uint qHash(const QPointer<DetachedWindow> &key, uint seed = 0) noexcept
+{
+    // Hash the raw pointer inside QPointer
+    return qHash(static_cast<DetachedWindow*>(key.data()), seed);
+}
 
 TabManager::TabManager(DraggableTabWidget* mainTabWidget, QWidget* projectTab, Project* project, QObject* parent)
     : QObject(parent)
@@ -25,11 +33,7 @@ TabManager::TabManager(DraggableTabWidget* mainTabWidget, QWidget* projectTab, P
 
 TabManager::~TabManager()
 {
-    // Clean up detached windows
-    for (DetachedWindow* dw : m_detachedWindows) {
-        if (dw)
-            dw->deleteLater();
-    }
+
     m_detachedWindows.clear();
 }
 
@@ -124,7 +128,7 @@ void TabManager::setupTabWidgetConnections(DraggableTabWidget* tabWidget)
 
     connect(tabWidget, &DraggableTabWidget::tabMoved, this, &TabManager::onTabMoved);
     connect(tabWidget, &DraggableTabWidget::tabRemoved, this, &TabManager::onTabRemoved);
-    connect(tabWidget, &DraggableTabWidget::tabCloseRequested, this, &TabManager::onTabCloseRequested);
+    // connect(tabWidget, &DraggableTabWidget::tabCloseRequested, this, &TabManager::onTabCloseRequested);
     connect(tabWidget, &DraggableTabWidget::createNewWindow, this, [this](const QRect& rect, const DraggableTabWidget::TabInfo& tabInfo){
         auto tab = qobject_cast<SessionTabWidget*>(tabInfo.widget);
         if (!tab) {
@@ -135,8 +139,9 @@ void TabManager::setupTabWidgetConnections(DraggableTabWidget* tabWidget)
     });
 }
 
-void TabManager::onTabMoved(QWidget* widget, DraggableTabWidget* /*oldParent*/, DraggableTabWidget* /*newParent*/)
+void TabManager::onTabMoved(QWidget* widget, DraggableTabWidget* oldParent, DraggableTabWidget* newParent)
 {
+    qDebug() << "[TabManager] onTabMoved widget" << widget << "from" << oldParent << "to" << newParent;
     if (!widget) {
         qWarning() << "[TabManager] onTabMoved called with null widget";
         return;
@@ -154,6 +159,7 @@ void TabManager::onTabMoved(QWidget* widget, DraggableTabWidget* /*oldParent*/, 
         auto sessionTab = qobject_cast<SessionTabWidget*>(widget);
         if (sessionTab) {
             sessionPath = sessionTab->sessionFilePath();
+            qDebug() << "[TabManager] onTabMoved: Found session path" << sessionPath;
             if (!sessionPath.isEmpty()) {
                 m_openSessions.insert(sessionPath, sessionTab);
                 qDebug() << "[TabManager] onTabMoved: Added new session tab to openSessions:" << sessionPath;
@@ -164,6 +170,7 @@ void TabManager::onTabMoved(QWidget* widget, DraggableTabWidget* /*oldParent*/, 
             qWarning() << "[TabManager] onTabMoved: Widget not a SessionTabWidget";
         }
     } else {
+        // Update the tab widget pointer in m_openSessions to the new parent tab widget
         m_openSessions[sessionPath] = qobject_cast<SessionTabWidget*>(widget);
         qDebug() << "[TabManager] Updated openSessions for session:" << sessionPath;
     }
@@ -185,6 +192,7 @@ void TabManager::onTabRemoved(QWidget* widget)
         if (auto tabWidget = qobject_cast<QTabWidget*>(parentWidget)) {
             if (tabWidget->indexOf(widget) != -1) {
                 stillInTabs = true;
+                qDebug() << "[TabManager] Widget still in tab widget:" << tabWidget << "Tab count:" << tabWidget->count();
                 break;
             }
         }
@@ -208,83 +216,75 @@ void TabManager::onTabRemoved(QWidget* widget)
         m_openSessions.remove(sessionPathToRemove);
         qDebug() << "[TabManager] Removed session from openSessions due to tabRemoved:" << sessionPathToRemove;
         emit sessionClosed(sessionPathToRemove);
+    } else {
+        qDebug() << "[TabManager] onTabRemoved: Widget not found in openSessions map";
     }
 
     ensureProjectTabPresent();
-
-    // Close detached window if empty
-    auto tabWidget = qobject_cast<DraggableTabWidget*>(widget->parentWidget());
-    if (tabWidget && tabWidget != m_mainTabWidget) {
-        QTimer::singleShot(0, [tabWidget, this]() {
-            if (tabWidget->count() == 0) {
-                QWidget* w = tabWidget->window();
-                if (w) {
-                    qDebug() << "[TabManager] Closing detached window due to empty tabs:" << w;
-                    w->close();
-                }
-            }
-        });
-    }
 }
 
-void TabManager::onTabCloseRequested(int index)
-{
-    auto tabWidget = qobject_cast<DraggableTabWidget*>(sender());
-    if (!tabWidget)
-        return;
+// void TabManager::onTabCloseRequested(int index)
+// {
+//     auto tabWidget = qobject_cast<DraggableTabWidget*>(sender());
+//     if (!tabWidget) {
+//         qWarning() << "[TabManager] onTabCloseRequested: sender is not DraggableTabWidget";
+//         return;
+//     }
 
-    QWidget* widget = tabWidget->widget(index);
-    if (!widget)
-        return;
+//     QWidget* widget = tabWidget->widget(index);
+//     if (!widget) {
+//         qWarning() << "[TabManager] onTabCloseRequested: no widget at index" << index;
+//         return;
+//     }
 
-    // Prevent closing Project tab
-    if (widget == m_projectTab) {
-        qDebug() << "[TabManager] Close requested on Project tab - ignored";
-        return;
-    }
+//     if (widget == m_projectTab) {
+//         qDebug() << "[TabManager] Close requested on Project tab - ignored";
+//         return;
+//     }
 
-    // Use the widget-based removeTab method for safety
-    tabWidget->removeTab(widget);
+//     qDebug() << "[TabManager] onTabCloseRequested: Removing tab at index" << index << "widget" << widget;
 
-    // Delete the widget after removal
-    widget->deleteLater();
+//     tabWidget->removeTab(widget);
 
-    // onTabRemoved will handle map cleanup and window closing
-}
+//     qDebug() << "[TabManager] onTabCloseRequested: Deleting widget" << widget;
+
+//     widget->deleteLater();
+// }
 
 void TabManager::createDetachedWindowWithTab(const QRect& winRect, const DraggableTabWidget::TabInfo& tabInfo)
 {
     if (!tabInfo.widget)
         return;
 
-    // // Remove tab from current tab widget first
-    // auto oldTabWidget = qobject_cast<DraggableTabWidget*>(tabInfo.widget->parentWidget());
-    // if (oldTabWidget) {
-    //     int idx = oldTabWidget->indexOf(tabInfo.widget);
-    //     if (idx != -1) {
-    //         oldTabWidget->removeTab(idx);
-    //     }
-    // }
+    // Remove tab from current tab widget first
+    // code worked fine when this was commented out;
+    // could be redundant to other removal; could cause segfault
+    auto oldTabWidget = qobject_cast<DraggableTabWidget*>(tabInfo.widget->parentWidget());
+    if (oldTabWidget) {
+        qDebug() << "[TabManager] Removing tab widget from old tab widget before detaching:" << tabInfo.widget;
+        oldTabWidget->removeTab(tabInfo.widget);
+    }
 
-    // Create new detached window
     DetachedWindow* newWindow = new DetachedWindow(this);
     m_detachedWindows.insert(newWindow);
 
-    // Add tab to detached window's tab widget with proper info
     newWindow->addTabFromInfo(tabInfo);
     newWindow->setGeometry(winRect);
     newWindow->show();
 
-    // Connect signals on detached window's tab widget
+    qDebug() << "[TabManager] Created detached window" << newWindow << "with tab:" << tabInfo.widget;
+
     DraggableTabWidget* dwTabWidget = newWindow->findChild<DraggableTabWidget*>();
     if (dwTabWidget) {
         setupTabWidgetConnections(dwTabWidget);
+
+        DraggableTabWidget* oldTabWidget = qobject_cast<DraggableTabWidget*>(tabInfo.widget->parentWidget());
+        if (oldTabWidget && oldTabWidget != dwTabWidget) {
+            emit dwTabWidget->tabMoved(tabInfo.widget, oldTabWidget, dwTabWidget);
+        }
     }
 
-    // Remove from set when window destroyed
     connect(newWindow, &QObject::destroyed, this, &TabManager::onDetachedWindowDestroyed);
-
-    qDebug() << "[TabManager] Created detached window with tab:" << tabInfo.widget;
 }
 
 void TabManager::onDetachedWindowDestroyed(QObject* obj)
@@ -293,9 +293,10 @@ void TabManager::onDetachedWindowDestroyed(QObject* obj)
     if (!dw)
         return;
 
+    qDebug() << "[TabManager] Detached window destroyed:" << dw;
+
     m_detachedWindows.remove(dw);
 
-    // Clean up openSessions entries whose widgets belong to this window
     QList<QString> keysToRemove;
     for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
         QWidget* w = it.value();

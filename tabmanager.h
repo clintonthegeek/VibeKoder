@@ -40,7 +40,7 @@ public slots:
 
 private slots:
     void onTabMoved(QWidget* widget, DraggableTabWidget* oldParent, DraggableTabWidget* newParent);
-    void onTabCloseRequested(int index);
+    // void onTabCloseRequested(int index);
     void onDetachedWindowDestroyed(QObject* obj);
 
 private:
@@ -55,7 +55,7 @@ private:
     QMap<QString, SessionTabWidget*> m_openSessions;
 
     // Track detached windows to manage lifetime
-    QSet<DetachedWindow*> m_detachedWindows;
+    QSet<QPointer<DetachedWindow>> m_detachedWindows;
 };
 
 #endif // TABMANAGER_H

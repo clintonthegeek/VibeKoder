@@ -176,20 +176,25 @@ void DraggableTabBar::dropEvent(QDropEvent* event)
     QString tabToolTip = sourceTabBar->tabToolTip(sourceIndex);
     QString tabWhatsThis = sourceTabBar->tabWhatsThis(sourceIndex);
 
-    // Remove tab by widget pointer (safe)
-    int removeIndex = sourceTabWidget->indexOf(tabPage);
-    if (removeIndex == -1) {
-        event->ignore();
-        return;
+    // Remove tab by QWidget pointer using DraggableTabWidget::removeTab(QWidget*)
+    if (sourceDraggable) {
+        sourceDraggable->removeTab(tabPage);
+    } else {
+        // Fallback to base removeTab(int) if not DraggableTabWidget
+        int removeIndex = sourceTabWidget->indexOf(tabPage);
+        if (removeIndex != -1) {
+            sourceTabWidget->removeTab(removeIndex);
+        }
     }
-    sourceTabWidget->removeTab(removeIndex);
 
     // Insert tab into target tab widget with preserved metadata
     if (targetIndex > targetTabWidget->count())
         targetIndex = targetTabWidget->count();
 
     tabPage->setParent(targetTabWidget);
-    targetTabWidget->insertTab(targetIndex, tabPage, tabIcon, tabText);
+    int insertedIndex = targetTabWidget->insertTab(targetIndex, tabPage, tabIcon, tabText);
+    qDebug() << "[dropEvent] Inserted tab into target at index" << insertedIndex << "Target tab count:" << targetTabWidget->count();
+
     targetTabWidget->setTabToolTip(targetIndex, tabToolTip);
     targetTabWidget->setTabWhatsThis(targetIndex, tabWhatsThis);
     targetTabWidget->setCurrentIndex(targetIndex);
@@ -271,7 +276,7 @@ void DraggableTabWidget::onDetachTabRequested(int index, const QPoint& globalPos
     tabInfo.toolTip = tabToolTip(index);
     tabInfo.whatsThis = tabWhatsThis(index);
 
-    // Remove tab by widget pointer (safe)
+    // Remove tab immediately
     removeTab(page);
 
     emit createNewWindow(QRect(globalPos, QSize(600, 400)), tabInfo);
@@ -315,8 +320,10 @@ void DraggableTabWidget::onTabCloseRequested(int index)
 
 void DraggableTabWidget::removeTab(QWidget* widget)
 {
-    if (!widget)
+    if (!widget) {
+        qDebug() << "[DraggableTabWidget] removeTab called with null widget";
         return;
+    }
 
     if (widget == m_projectTab) {
         qDebug() << "[DraggableTabWidget] Attempt to remove Project tab ignored";
@@ -332,6 +339,9 @@ void DraggableTabWidget::removeTab(QWidget* widget)
     qDebug() << "[DraggableTabWidget] removeTab called for widget:" << widget << "at index:" << idx;
 
     QTabWidget::removeTab(idx);
+
+    qDebug() << "[DraggableTabWidget] Tab removed from QTabWidget, emitting tabRemoved signal";
+
     emit tabRemoved(widget);
 }
 
