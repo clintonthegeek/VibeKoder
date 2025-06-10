@@ -51,6 +51,8 @@ else()
             aibackend.h aibackend.cpp
             openaibackend.h openaibackend.cpp
             tabmanager.h tabmanager.cpp
+            appconfig.h appconfig.cpp
+            projectsettingsdialog.h projectsettingsdialog.cpp
         )
     endif()
 endif()
