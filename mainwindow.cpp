@@ -304,6 +304,13 @@ void MainWindow::onNewProject()
     }
 
     // 12. Load the new project into the app
+    // Close all open session tabs before switching projects
+    if (m_tabManager) {
+        auto openSessions = m_tabManager->openSessions();
+        for (const QString& sessionPath : openSessions.keys()) {
+            m_tabManager->closeSession(sessionPath);
+        }
+    }
     if (m_project)
         delete m_project;
     m_project = new Project(this, &appConfig);
@@ -397,6 +404,13 @@ void MainWindow::onOpenProject()
     QString fileName = QFileDialog::getOpenFileName(this, "Open Project File", QString(), "Project Files (*.json)");
     if (fileName.isEmpty())
         return;
+
+    if (m_tabManager) {
+        auto openSessions = m_tabManager->openSessions();
+        for (const QString& sessionPath : openSessions.keys()) {
+            m_tabManager->closeSession(sessionPath);
+        }
+    }
 
     if (m_project)
         m_project->deleteLater();
