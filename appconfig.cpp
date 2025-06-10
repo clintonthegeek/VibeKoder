@@ -121,25 +121,6 @@ QVariantMap AppConfig::getConfigMap() const
 
 void AppConfig::copyDefaultResources()
 {
-    // Copy schema.json from resource
-    QString schemaDestPath = QDir(m_configFolder).filePath("schema.json");
-    if (!QFile::exists(schemaDestPath)) {
-        QFile schemaFile(":/config/schema.json");
-        if (schemaFile.open(QIODevice::ReadOnly)) {
-            QFile outFile(schemaDestPath);
-            if (outFile.open(QIODevice::WriteOnly)) {
-                outFile.write(schemaFile.readAll());
-                outFile.close();
-                qDebug() << "Copied schema.json to" << schemaDestPath;
-            } else {
-                qWarning() << "Failed to open schema.json destination for writing:" << schemaDestPath;
-            }
-            schemaFile.close();
-        } else {
-            qWarning() << "Failed to open schema.json resource";
-        }
-    }
-
     // Copy templates from resource, renaming .VKTemplate to .md
     QString templatesDestDir = QDir(m_configFolder).filePath("templates");
     QDir templatesDir(templatesDestDir);
@@ -186,10 +167,10 @@ void AppConfig::generateConfigJsonFromSchema()
     if (QFile::exists(configJsonPath))
         return; // Don't overwrite existing config.json
 
-    QString schemaPath = QDir(m_configFolder).filePath("schema.json");
-    QFile schemaFile(schemaPath);
+    // Load schema from resource instead of file
+    QFile schemaFile(":/config/schema.json");
     if (!schemaFile.open(QIODevice::ReadOnly)) {
-        qWarning() << "Failed to open schema.json for generating config.json";
+        qWarning() << "Failed to open schema resource for generating config.json";
         return;
     }
     QByteArray schemaData = schemaFile.readAll();

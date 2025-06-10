@@ -77,8 +77,6 @@ void Project::setValue(const QString &keyPath, const QVariant &value)
 
 QString Project::schemaFilePath() const
 {
-    // Example: get schema.json path from AppConfig config folder
-    QString configFolder = AppConfig::instance().configFolder();
-    QString schemaPath = QDir(configFolder).filePath("schema.json");
-    return schemaPath;
+    // Return internal resource path for schema.json
+    return QStringLiteral(":/config/schema.json");
 }

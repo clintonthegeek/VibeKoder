@@ -12,7 +12,8 @@
           "top_p": { "type": "number", "default": 1.0 },
           "frequency_penalty": { "type": "number", "default": 0.0 },
           "presence_penalty": { "type": "number", "default": 0.0 },
-          "stream": { "type": "boolean", "default": false }
+          "stream": { "type": "boolean", "default": false },
+          "proprietary": { "type": "boolean", "default": true }
         }
       },
       "folders": {

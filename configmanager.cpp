@@ -11,10 +11,10 @@ ConfigManager::ConfigManager(const QString &configFilePath,
 
 bool ConfigManager::load()
 {
-    // Load schema file
-    QFile schemaFile(m_schemaFilePath);
+    // Load schema file from resource
+    QFile schemaFile(":/config/schema.json");
     if (!schemaFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        qWarning() << "Failed to open schema file:" << m_schemaFilePath;
+        qWarning() << "Failed to open schema resource file";
         return false;
     }
     QByteArray schemaData = schemaFile.readAll();
