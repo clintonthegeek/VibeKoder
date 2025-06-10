@@ -11,14 +11,15 @@
 #include <QUrl>
 #include <QContextMenuEvent>
 #include <QRandomGenerator>
+#include <QFileDialog>
 
-
-SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project, QWidget *parent)
+SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project, QWidget *parent, bool isTempSession)
     : QWidget(parent)
     , m_sessionFilePath(sessionPath)
     , m_project(project)
     , m_session(project)
     , m_updatingEditor(false)
+    , m_isTempSession(isTempSession)
 {
     qDebug() << "[SessionTabWidget] Constructor for session:" << sessionPath << "Widget:" << this;
 
@@ -27,13 +28,25 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 
     // Set global config from project
     QVariantMap config;
-    config["access_token"] = m_project->accessToken();
-    config["model"] = m_project->model();
-    config["max_tokens"] = m_project->maxTokens();
-    config["temperature"] = m_project->temperature();
-    config["top_p"] = m_project->topP();
-    config["frequency_penalty"] = m_project->frequencyPenalty();
-    config["presence_penalty"] = m_project->presencePenalty();
+    if (m_project) {
+        config["access_token"] = m_project->accessToken();
+        config["model"] = m_project->model();
+        config["max_tokens"] = m_project->maxTokens();
+        config["temperature"] = m_project->temperature();
+        config["top_p"] = m_project->topP();
+        config["frequency_penalty"] = m_project->frequencyPenalty();
+        config["presence_penalty"] = m_project->presencePenalty();
+    } else {
+        // For temp session, set defaults or empty values
+        // Eventually have app config with defaults.
+        config["access_token"] = QString();
+        config["model"] = QString("gpt-4.1-mini");
+        config["max_tokens"] = 20000;
+        config["temperature"] = 0.3;
+        config["top_p"] = 1.0;
+        config["frequency_penalty"] = 0.0;
+        config["presence_penalty"] = 0.0;
+    }
     m_aiBackend->setConfig(config);
 
     // Connect signals
@@ -109,6 +122,13 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     buttonLayout->addWidget(refreshButton);
     connect(refreshButton, &QPushButton::clicked, this, &SessionTabWidget::onRefreshClicked);
 
+    // save Temp session button
+    if (m_isTempSession) {
+        m_saveTempButton = new QPushButton("Save", this);
+        buttonLayout->addWidget(m_saveTempButton);
+        connect(m_saveTempButton, &QPushButton::clicked, this, &SessionTabWidget::onSaveTempSessionClicked);
+    }
+
     // Spacer for future buttons
     buttonLayout->addStretch();
 
@@ -167,6 +187,34 @@ void SessionTabWidget::loadSession()
     }
 
     buildPromptSliceTree();
+}
+
+void SessionTabWidget::onSaveTempSessionClicked()
+{
+    QString suggestedName = "temp_session.md";
+    QString fileName = QFileDialog::getSaveFileName(this, "Save Temporary Session", suggestedName, "Markdown Files (*.md *.markdown);;All Files (*)");
+    if (fileName.isEmpty())
+        return;
+
+    if (!m_session.save(fileName)) {
+        QMessageBox::warning(this, "Save Failed", "Failed to save the session to the selected file.");
+        return;
+    }
+
+    // Update internal session file path and mark as non-temp (optional)
+    m_sessionFilePath = fileName;
+    m_isTempSession = false;
+
+    // Optionally disable Save button after saving
+    if (m_saveTempButton) {
+        m_saveTempButton->setEnabled(false);
+        m_saveTempButton->hide();
+    }
+
+    // Optionally emit signal to notify MainWindow or TabManager
+    emit tempSessionSaved(fileName);
+
+    QMessageBox::information(this, "Saved", "Temporary session saved successfully.");
 }
 
 void SessionTabWidget::buildPromptSliceTree()

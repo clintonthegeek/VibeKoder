@@ -15,6 +15,7 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QDebug>
+#include <QStandardPaths>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -46,8 +47,13 @@ void MainWindow::setupUi()
     projectMenu->addAction(openProjectAction);
     connect(openProjectAction, &QAction::triggered, this, &MainWindow::onOpenProject);
 
+    QAction* newTempSessionAction = new QAction("New Temp Session", this);
+    newTempSessionAction->setShortcut(QKeySequence("Ctrl+T"));
+    connect(newTempSessionAction, &QAction::triggered, this, &MainWindow::onNewTempSession);
+
     QToolBar* toolbar = addToolBar("Main Toolbar");
     toolbar->addAction(openProjectAction);
+    toolbar->addAction(newTempSessionAction);
 
 
     statusBar();
@@ -122,6 +128,41 @@ void MainWindow::setupUi()
     if (projIndex != -1) {
         m_tabWidget->tabBar()->setTabButton(projIndex, QTabBar::RightSide, nullptr);
     }
+}
+
+void MainWindow::onNewTempSession()
+{
+    QString tempDir = QStandardPaths::writableLocation(QStandardPaths::TempLocation);
+    QString tempFileName = QString("vibekoder_temp_%1.md").arg(QDateTime::currentMSecsSinceEpoch());
+    QString tempFilePath = QDir(tempDir).filePath(tempFileName);
+
+    QFile tempFile(tempFilePath);
+    if (!tempFile.exists()) {
+        if (!tempFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QMessageBox::warning(this, "Error", "Failed to create temporary session file.");
+            return;
+        }
+
+        QTextStream out(&tempFile);
+
+        // Write minimal valid session content with a system prompt slice
+        QString timestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");
+        out << "=={ System | " << timestamp << " }==\n";
+        out << "You are a helpful assistant.\n\n";
+
+        tempFile.close();
+    }
+
+    SessionTabWidget* tempTab = new SessionTabWidget(tempFilePath, nullptr, m_tabWidget, true);
+    m_tabWidget->addTab(tempTab, "Temp");
+    m_tabWidget->setCurrentWidget(tempTab);
+
+    connect(tempTab, &SessionTabWidget::tempSessionSaved, this, [this, tempTab](const QString& newFilePath){
+        int idx = m_tabWidget->indexOf(tempTab);
+        if (idx != -1) {
+            m_tabWidget->setTabText(idx, QFileInfo(newFilePath).fileName());
+        }
+    });
 }
 
 void MainWindow::tryAutoLoadProject()

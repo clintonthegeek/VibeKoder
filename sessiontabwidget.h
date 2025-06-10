@@ -18,7 +18,8 @@ class SessionTabWidget : public QWidget
     Q_OBJECT
 
 public:
-    explicit SessionTabWidget(const QString& sessionPath, Project* project, QWidget *parent=nullptr);
+    explicit SessionTabWidget(const QString& sessionPath, Project* project,
+                              QWidget *parent=nullptr, bool isTempSession = false);
     ~SessionTabWidget();
 
     bool saveSession();
@@ -26,11 +27,16 @@ public:
 
     void updateBackendConfig(const QVariantMap &config);
 
+signals:
+    void tempSessionSaved(const QString& newFilePath);
+
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override;
     void contextMenuEvent(QContextMenuEvent *event) override;
 
 private slots:
+    void onSaveTempSessionClicked();
+
     void onSendClicked();
     void onForkClicked();
     void onDeleteToEndClicked();
@@ -70,6 +76,11 @@ private:
     // Buffer for partial response text (optional)
     QString m_partialResponseBuffer;
     bool m_updatingEditor = false;
+
+    // New Save button for temp sessions
+    QPushButton* m_saveTempButton = nullptr;
+    bool m_isTempSession = false;
+
 
 
 };
