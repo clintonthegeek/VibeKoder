@@ -46,18 +46,9 @@ void MainWindow::setupUi()
     projectMenu->addAction(openProjectAction);
     connect(openProjectAction, &QAction::triggered, this, &MainWindow::onOpenProject);
 
-    QMenu* sessionMenu = menuBar()->addMenu("Sessions");
-    QAction* openSessionAction = new QAction("Open Session", this);
-    QAction* saveSessionAction = new QAction("Save Session", this);
-    sessionMenu->addAction(openSessionAction);
-    sessionMenu->addAction(saveSessionAction);
-    connect(openSessionAction, &QAction::triggered, this, &MainWindow::onOpenSession);
-    connect(saveSessionAction, &QAction::triggered, this, &MainWindow::onSaveSession);
-
     QToolBar* toolbar = addToolBar("Main Toolbar");
     toolbar->addAction(openProjectAction);
-    toolbar->addAction(openSessionAction);
-    toolbar->addAction(saveSessionAction);
+
 
     statusBar();
 
@@ -355,26 +346,4 @@ void MainWindow::onOpenSelectedSession()
     statusBar()->showMessage(QString("Opened session %1").arg(sessionName));
 }
 
-void MainWindow::onOpenSession()
-{
-    // Optional: implement dialog for arbitrary session file selection
-}
-
-void MainWindow::onSaveSession()
-{
-    if (m_openSessions.isEmpty())
-        return;
-
-    QWidget* currentWidget = m_tabWidget->currentWidget();
-    if (!currentWidget)
-        return;
-
-    SessionTabWidget *tab = qobject_cast<SessionTabWidget*>(currentWidget);
-    if (tab) {
-        if (!tab->saveSession())
-            QMessageBox::warning(this, "Save Failed", "Failed to save the current session.");
-        else
-            statusBar()->showMessage("Session saved.");
-    }
-}
 

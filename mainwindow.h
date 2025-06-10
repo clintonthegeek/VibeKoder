@@ -24,8 +24,6 @@ public:
 
 private slots:
     void onOpenProject();
-    void onOpenSession();
-    void onSaveSession();
 
     void onCreateSessionFromTemplate();
     void onOpenSelectedSession();
