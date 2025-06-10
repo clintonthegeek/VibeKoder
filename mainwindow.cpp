@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "projectsettingsdialog.h"
 #include "sessiontabwidget.h"
 #include "detachedwindow.h"
 
@@ -91,6 +92,11 @@ void MainWindow::setupUi()
     m_openSessionBtn = new QPushButton("Open Selected Session");
     projLayout->addWidget(m_openSessionBtn);
     connect(m_openSessionBtn, &QPushButton::clicked, this, &MainWindow::onOpenSelectedSession);
+
+    m_projectSettingsBtn = new QPushButton("Project Settings", m_projectTab);
+    m_projectSettingsBtn->setEnabled(false); // Disabled until a project is loaded
+    projLayout->addWidget(m_projectSettingsBtn);
+    connect(m_projectSettingsBtn, &QPushButton::clicked, this, &MainWindow::onProjectSettingsClicked);
 
     m_tabWidget->addTab(m_projectTab, "Project");
 
@@ -290,6 +296,90 @@ void MainWindow::loadProjectDataToUi()
         QFileInfoList files = templatesDir.entryInfoList(filters, QDir::Files);
         for (const QFileInfo &fi : files)
             m_templateList->addItem(fi.fileName());
+    }
+
+    if (m_projectSettingsBtn)
+        m_projectSettingsBtn->setEnabled(true);
+}
+
+void MainWindow::onProjectSettingsClicked()
+{
+    if (!m_project)
+        return;
+
+    ProjectSettingsDialog dlg(this);
+
+    // Load current project settings into dialog
+    dlg.loadSettings(
+        QVariantMap{
+            {"access_token", m_project->accessToken()},
+            {"model", m_project->model()},
+            {"max_tokens", m_project->maxTokens()},
+            {"temperature", m_project->temperature()},
+            {"top_p", m_project->topP()},
+            {"frequency_penalty", m_project->frequencyPenalty()},
+            {"presence_penalty", m_project->presencePenalty()}
+        },
+        QVariantMap{
+            {"root", m_project->rootFolder()},
+            {"docs", m_project->docsFolder()},
+            {"src", m_project->srcFolder()},
+            {"sessions", m_project->sessionsFolder()},
+            {"templates", m_project->templatesFolder()},
+            {"include_docs", QVariant::fromValue(m_project->includeDocFolders())}
+        },
+        m_project->sourceFileTypes(),
+        m_project->docFileTypes(),
+        m_project->commandPipes()
+        );
+
+    if (dlg.exec() == QDialog::Accepted) {
+        QVariantMap apiSettings;
+        QVariantMap folders;
+        QStringList sourceFileTypes;
+        QStringList docFileTypes;
+        QMap<QString, QStringList> commandPipes;
+
+        dlg.getSettings(apiSettings, folders, sourceFileTypes, docFileTypes, commandPipes);
+
+        // Apply settings back to project
+        m_project->setAccessToken(apiSettings.value("access_token").toString());
+        m_project->setModel(apiSettings.value("model").toString());
+        m_project->setMaxTokens(apiSettings.value("max_tokens").toInt());
+        m_project->setTemperature(apiSettings.value("temperature").toDouble());
+        m_project->setTopP(apiSettings.value("top_p").toDouble());
+        m_project->setFrequencyPenalty(apiSettings.value("frequency_penalty").toDouble());
+        m_project->setPresencePenalty(apiSettings.value("presence_penalty").toDouble());
+
+        m_project->setRootFolder(folders.value("root").toString());
+        m_project->setDocsFolder(folders.value("docs").toString());
+        m_project->setSrcFolder(folders.value("src").toString());
+        m_project->setSessionsFolder(folders.value("sessions").toString());
+        m_project->setTemplatesFolder(folders.value("templates").toString());
+
+        // include_docs is QStringList stored as QVariant
+        QVariant includeDocsVar = folders.value("include_docs");
+        if (includeDocsVar.canConvert<QStringList>())
+            m_project->setIncludeDocFolders(includeDocsVar.toStringList());
+        else if (includeDocsVar.canConvert<QVariantList>()) {
+            QStringList list;
+            for (const QVariant &v : includeDocsVar.toList())
+                list.append(v.toString());
+            m_project->setIncludeDocFolders(list);
+        }
+
+        m_project->setSourceFileTypes(sourceFileTypes);
+        m_project->setDocFileTypes(docFileTypes);
+        m_project->setCommandPipes(commandPipes);
+
+        // Update UI to reflect changes
+        loadProjectDataToUi();
+
+        // Optionally save project file if you have save implemented
+        // m_project->save(...);
+
+        // Update backend config for open sessions if needed
+        updateBackendConfigForAllSessions();
     }
 }
 

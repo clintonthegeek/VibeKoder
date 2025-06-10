@@ -1,6 +1,7 @@
 #include "project.h"
 
 #include <QFile>
+#include <fstream>  // For std::ofstream
 #include <QDir>
 #include <QFileInfo>
 #include <QDebug>
@@ -8,8 +9,10 @@
 
 #include "toml.hpp"
 
-Project::Project(QObject *parent)
+Project::Project(QObject *parent,
+                 AppConfig* appConfig)
     : QObject(parent)
+    , m_appConfig(appConfig ? appConfig : &AppConfig::instance())
     , m_rootFolder()
     , m_docsFolder()
     , m_srcFolder()
@@ -43,10 +46,89 @@ bool Project::load(const QString &filepath)
     return ok;
 }
 
-bool Project::save(const QString & /*filepath*/)
+bool Project::save(const QString &filepath)
 {
-    // Save not implemented yet
-    return false;
+    QString savePath = filepath.isEmpty() ? m_projectFilePath : filepath;
+    if (savePath.isEmpty()) {
+        qWarning() << "No project file path specified for saving.";
+        return false;
+    }
+
+    // try {
+    //     toml::table root;
+
+    //     // [api] section
+    //     toml::table apiTable;
+    //     apiTable.insert("access_token", m_accessToken);
+    //     apiTable.insert("model", m_model);
+    //     apiTable.insert("max_tokens", m_maxTokens);
+    //     apiTable.insert("temperature", m_temperature);
+    //     apiTable.insert("top_p", m_topP);
+    //     apiTable.insert("frequency_penalty", m_frequencyPenalty);
+    //     apiTable.insert("presence_penalty", m_presencePenalty);
+    //     root.insert("api", apiTable);
+
+    //     // [folders] section
+    //     toml::table foldersTable;
+    //     foldersTable.insert("root", m_rootFolder);
+    //     foldersTable.insert("docs", m_docsFolder);
+    //     foldersTable.insert("src", m_srcFolder);
+    //     foldersTable.insert("sessions", m_sessionsFolder);
+    //     foldersTable.insert("templates", m_templatesFolder);
+
+    //     // include_docs as array
+    //     toml::array includeDocsArray;
+    //     for (const QString &folder : m_includeDocFolders) {
+    //         includeDocsArray.push_back(folder.toStdString());
+    //     }
+    //     foldersTable.insert("include_docs", includeDocsArray);
+
+    //     root.insert("folders", foldersTable);
+
+    //     // [filetypes] section
+    //     toml::table filetypesTable;
+    //     toml::array sourceArray;
+    //     for (const QString &ext : m_sourceFileTypes) {
+    //         sourceArray.push_back(ext.toStdString());
+    //     }
+    //     filetypesTable.insert("source", sourceArray);
+
+    //     toml::array docsArray;
+    //     for (const QString &ext : m_docFileTypes) {
+    //         docsArray.push_back(ext.toStdString());
+    //     }
+    //     filetypesTable.insert("docs", docsArray);
+
+    //     root.insert("filetypes", filetypesTable);
+
+    //     // [command_pipes] section
+    //     toml::table commandPipesTable;
+    //     for (auto it = m_commandPipes.constBegin(); it != m_commandPipes.constEnd(); ++it) {
+    //         toml::array cmdArray;
+    //         for (const QString &cmd : it.value()) {
+    //             cmdArray.push_back(cmd.toStdString());
+    //         }
+    //         commandPipesTable.insert(it.key().toStdString(), cmdArray);
+    //     }
+    //     root.insert("command_pipes", commandPipesTable);
+
+    //     // Write to file
+    //     std::ofstream ofs(savePath.toStdString());
+    //     if (!ofs.is_open()) {
+    //         qWarning() << "Failed to open project file for writing:" << savePath;
+    //         return false;
+    //     }
+    //     ofs << root;
+    //     ofs.close();
+
+    //     m_projectFilePath = savePath; // Update current project file path if needed
+
+    //     qDebug() << "Project saved to" << savePath;
+    //     return true;
+    // } catch (const std::exception &ex) {
+    //     qWarning() << "Exception saving project file:" << ex.what();
+    //     return false;
+    // }
 }
 
 bool Project::parseToml(const QString &content, const QString &projectFilePath)
@@ -243,21 +325,172 @@ QStringList Project::scanSourceRecursive() const
 }
 
 // Getters for folders and filetypes
-QString Project::rootFolder() const { return m_rootFolder; }
-QString Project::docsFolder() const { return m_docsFolder; }
-QString Project::srcFolder() const { return m_srcFolder; }
-QString Project::sessionsFolder() const { return m_sessionsFolder; }
-QString Project::templatesFolder() const { return m_templatesFolder; }
-QStringList Project::includeDocFolders() const { return m_includeDocFolders; }
+QString Project::rootFolder() const
+{
+    if (!m_rootFolder.isEmpty())
+        return m_rootFolder;
+    if (m_appConfig)
+        return m_appConfig->defaultFolders().value("root").toString();
+    return QString();
+}
 
-QStringList Project::sourceFileTypes() const { return m_sourceFileTypes; }
-QStringList Project::docFileTypes() const { return m_docFileTypes; }
-QMap<QString, QStringList> Project::commandPipes() const { return m_commandPipes; }
+QString Project::docsFolder() const
+{
+    if (!m_docsFolder.isEmpty())
+        return m_docsFolder;
+    if (m_appConfig)
+        return m_appConfig->defaultFolders().value("docs").toString();
+    return QString();
+}
 
-QString Project::accessToken() const { return m_accessToken; }
-QString Project::model() const { return m_model; }
-int Project::maxTokens() const { return m_maxTokens; }
-double Project::temperature() const { return m_temperature; }
-double Project::topP() const { return m_topP; }
-double Project::frequencyPenalty() const { return m_frequencyPenalty; }
-double Project::presencePenalty() const { return m_presencePenalty; }
+QString Project::srcFolder() const
+{
+    if (!m_srcFolder.isEmpty())
+        return m_srcFolder;
+    if (m_appConfig)
+        return m_appConfig->defaultFolders().value("src").toString();
+    return QString();
+}
+
+QString Project::sessionsFolder() const
+{
+    if (!m_sessionsFolder.isEmpty())
+        return m_sessionsFolder;
+    if (m_appConfig)
+        return m_appConfig->defaultFolders().value("sessions").toString();
+    return QString();
+}
+
+QString Project::templatesFolder() const
+{
+    if (!m_templatesFolder.isEmpty())
+        return m_templatesFolder;
+    if (m_appConfig)
+        return m_appConfig->defaultFolders().value("templates").toString();
+    return QString();
+}
+
+QStringList Project::includeDocFolders() const
+{
+    if (!m_includeDocFolders.isEmpty())
+        return m_includeDocFolders;
+    if (m_appConfig) {
+        QString inc = m_appConfig->defaultFolders().value("include_docs").toString();
+        if (!inc.isEmpty())
+            return QStringList{inc};
+    }
+    return QStringList();
+}
+
+QStringList Project::sourceFileTypes() const
+{
+    if (!m_sourceFileTypes.isEmpty())
+        return m_sourceFileTypes;
+    if (m_appConfig)
+        return m_appConfig->defaultSourceFileTypes();
+    return QStringList();
+}
+
+QStringList Project::docFileTypes() const
+{
+    if (!m_docFileTypes.isEmpty())
+        return m_docFileTypes;
+    if (m_appConfig)
+        return m_appConfig->defaultDocFileTypes();
+    return QStringList();
+}
+
+QMap<QString, QStringList> Project::commandPipes() const
+{
+    if (!m_commandPipes.isEmpty())
+        return m_commandPipes;
+    if (m_appConfig)
+        return m_appConfig->defaultCommandPipes();
+    return QMap<QString, QStringList>();
+}
+
+// API getters with fallback
+
+QString Project::accessToken() const
+{
+    if (!m_accessToken.isEmpty())
+        return m_accessToken;
+    if (m_appConfig)
+        return m_appConfig->defaultApiSettings().value("access_token").toString();
+    return QString();
+}
+
+QString Project::model() const
+{
+    if (!m_model.isEmpty())
+        return m_model;
+    if (m_appConfig)
+        return m_appConfig->defaultApiSettings().value("model").toString();
+    return QString("gpt-4.1-mini");
+}
+
+int Project::maxTokens() const
+{
+    if (m_maxTokens > 0)
+        return m_maxTokens;
+    if (m_appConfig)
+        return m_appConfig->defaultApiSettings().value("max_tokens", 800).toInt();
+    return 800;
+}
+
+double Project::temperature() const
+{
+    if (m_temperature >= 0.0)
+        return m_temperature;
+    if (m_appConfig)
+        return m_appConfig->defaultApiSettings().value("temperature", 0.3).toDouble();
+    return 0.3;
+}
+
+double Project::topP() const
+{
+    if (m_topP >= 0.0)
+        return m_topP;
+    if (m_appConfig)
+        return m_appConfig->defaultApiSettings().value("top_p", 1.0).toDouble();
+    return 1.0;
+}
+
+double Project::frequencyPenalty() const
+{
+    if (m_frequencyPenalty >= 0.0)
+        return m_frequencyPenalty;
+    if (m_appConfig)
+        return m_appConfig->defaultApiSettings().value("frequency_penalty", 0.0).toDouble();
+    return 0.0;
+}
+
+double Project::presencePenalty() const
+{
+    if (m_presencePenalty >= 0.0)
+        return m_presencePenalty;
+    if (m_appConfig)
+        return m_appConfig->defaultApiSettings().value("presence_penalty", 0.0).toDouble();
+    return 0.0;
+}
+
+// Optional setters (if you want to allow setting these values)
+
+void Project::setRootFolder(const QString &folder) { m_rootFolder = folder; }
+void Project::setDocsFolder(const QString &folder) { m_docsFolder = folder; }
+void Project::setSrcFolder(const QString &folder) { m_srcFolder = folder; }
+void Project::setSessionsFolder(const QString &folder) { m_sessionsFolder = folder; }
+void Project::setTemplatesFolder(const QString &folder) { m_templatesFolder = folder; }
+void Project::setIncludeDocFolders(const QStringList &folders) { m_includeDocFolders = folders; }
+
+void Project::setSourceFileTypes(const QStringList &types) { m_sourceFileTypes = types; }
+void Project::setDocFileTypes(const QStringList &types) { m_docFileTypes = types; }
+void Project::setCommandPipes(const QMap<QString, QStringList> &pipes) { m_commandPipes = pipes; }
+
+void Project::setAccessToken(const QString &token) { m_accessToken = token; }
+void Project::setModel(const QString &model) { m_model = model; }
+void Project::setMaxTokens(int maxTokens) { m_maxTokens = maxTokens; }
+void Project::setTemperature(double temperature) { m_temperature = temperature; }
+void Project::setTopP(double topP) { m_topP = topP; }
+void Project::setFrequencyPenalty(double penalty) { m_frequencyPenalty = penalty; }
+void Project::setPresencePenalty(double penalty) { m_presencePenalty = penalty; }

@@ -35,6 +35,8 @@ private:
     void refreshSessionList();
     void tryAutoLoadProject();
     void updateBackendConfigForAllSessions();
+    void onProjectSettingsClicked();
+
 
 
     Project* m_project = nullptr;
@@ -50,6 +52,8 @@ private:
     QListWidget* m_sessionList = nullptr;
     QPushButton* m_createSessionBtn = nullptr;
     QPushButton* m_openSessionBtn = nullptr;
+    QPushButton* m_projectSettingsBtn = nullptr;
+
 
     TabManager* m_tabManager = nullptr;
 

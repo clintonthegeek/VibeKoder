@@ -5,12 +5,15 @@
 #include <QString>
 #include <QStringList>
 #include <QMap>
+#include "appconfig.h"  // include AppConfig header
+
 
 class Project : public QObject
 {
     Q_OBJECT
 public:
-    explicit Project(QObject *parent = nullptr);
+    explicit Project(QObject *parent = nullptr,
+                     AppConfig* appConfig = nullptr);
 
     bool load(const QString &filepath);
     bool save(const QString &filepath);
@@ -38,11 +41,34 @@ public:
     double frequencyPenalty() const;
     double presencePenalty() const;
 
+    // Setters for folders and filetypes
+    void setRootFolder(const QString &folder);
+    void setDocsFolder(const QString &folder);
+    void setSrcFolder(const QString &folder);
+    void setSessionsFolder(const QString &folder);
+    void setTemplatesFolder(const QString &folder);
+    void setIncludeDocFolders(const QStringList &folders);
+
+    void setSourceFileTypes(const QStringList &types);
+    void setDocFileTypes(const QStringList &types);
+    void setCommandPipes(const QMap<QString, QStringList> &pipes);
+
+    // Setters for API parameters
+    void setAccessToken(const QString &token);
+    void setModel(const QString &model);
+    void setMaxTokens(int maxTokens);
+    void setTemperature(double temperature);
+    void setTopP(double topP);
+    void setFrequencyPenalty(double penalty);
+    void setPresencePenalty(double penalty);
+
     // Recursive scanning stubs
     QStringList scanDocsRecursive() const;
     QStringList scanSourceRecursive() const;
 
 private:
+    AppConfig* m_appConfig = nullptr;  // pointer to app-level config singleton or injected instance
+
     bool parseToml(const QString &content, const QString &projectFilePath);
 
     // Member variables representing config
