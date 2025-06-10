@@ -55,6 +55,7 @@ else()
             projectsettingsdialog.h projectsettingsdialog.cpp
             configmanager.h configmanager.cpp
             files.qrc
+            projectsettingswidget.h projectsettingswidget.cpp
         )
     endif()
 endif()

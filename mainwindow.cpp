@@ -22,6 +22,18 @@
 #include <QDebug>
 #include <QStandardPaths>
 
+void setProjectSettingsFromMap(Project* project, const QVariantMap& map, const QString& prefix = QString())
+{
+    for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+        QString key = prefix.isEmpty() ? it.key() : prefix + "." + it.key();
+        if (it.value().type() == QVariant::Map) {
+            setProjectSettingsFromMap(project, it.value().toMap(), key);
+        } else {
+            project->setValue(key, it.value());
+        }
+    }
+}
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
@@ -224,17 +236,58 @@ void MainWindow::onNewProject()
     // 4. Override root folder default with the directory of the chosen project file
     folders["root"] = projectRootDir.absolutePath();
 
-    // 5. Show ProjectSettingsDialog initialized with these settings
+    // 5. Show ProjectSettingsDialog initialized with combined settings map
     ProjectSettingsDialog dlg(this);
-    dlg.loadSettings(apiSettings, folders, sourceFileTypes, docFileTypes, commandPipes);
+
+    // Combine all initial settings into a nested QVariantMap
+    QVariantMap initialSettings;
+
+    // Insert api settings
+    initialSettings.insert("api", apiSettings);
+
+    // Insert folders settings
+    initialSettings.insert("folders", folders);
+
+    // Insert filetypes settings
+    initialSettings.insert("filetypes", QVariantMap{
+                                            {"source", QVariant::fromValue(sourceFileTypes)},
+                                            {"docs", QVariant::fromValue(docFileTypes)}
+                                        });
+
+    // Insert command_pipes settings
+    initialSettings.insert("command_pipes", QVariantMap());
+    for (auto it = commandPipes.constBegin(); it != commandPipes.constEnd(); ++it) {
+        initialSettings["command_pipes"].toMap().insert(it.key(), QVariant::fromValue(it.value()));
+    }
+
+    // Load initial settings into dialog
+    dlg.loadSettings(initialSettings);
+
     if (dlg.exec() != QDialog::Accepted)
         return;
 
-    // 6. Extract updated settings from dialog
-    dlg.getSettings(apiSettings, folders, sourceFileTypes, docFileTypes, commandPipes);
+    // 6. Extract updated nested settings from dialog
+    QVariantMap updatedSettings = dlg.getSettings();
+
+    // Helper function to flatten and apply nested settings to Project
+    auto applySettingsToProject = [&](const QVariantMap &map) {
+        std::function<void(const QVariantMap&, const QString&)> setRec;
+        setRec = [&](const QVariantMap &m, const QString &prefix) {
+            for (auto it = m.constBegin(); it != m.constEnd(); ++it) {
+                QString key = prefix.isEmpty() ? it.key() : prefix + "." + it.key();
+                if (it.value().type() == QVariant::Map) {
+                    setRec(it.value().toMap(), key);
+                } else {
+                    m_project->setValue(key, it.value());
+                }
+            }
+        };
+        setRec(map, QString());
+    };
+    applySettingsToProject(updatedSettings);
 
     // 7. Resolve absolute root folder path from updated folders map
-    QString rootFolder = folders.value("root").toString();
+    QString rootFolder = m_project->getValue("folders.root").toString();
     if (!QDir(rootFolder).exists()) {
         if (!QDir().mkpath(rootFolder)) {
             QMessageBox::warning(this, "Error", "Failed to create root folder.");
@@ -503,79 +556,13 @@ void MainWindow::onProjectSettingsClicked()
         return;
 
     ProjectSettingsDialog dlg(this);
-
-    // Load current project settings into dialog
-    dlg.loadSettings(
-        QVariantMap{
-            {"access_token", m_project->getValue("api.access_token")},
-            {"model", m_project->getValue("api.model")},
-            {"max_tokens", m_project->getValue("api.max_tokens")},
-            {"temperature", m_project->getValue("api.temperature")},
-            {"top_p", m_project->getValue("api.top_p")},
-            {"frequency_penalty", m_project->getValue("api.frequency_penalty")},
-            {"presence_penalty", m_project->getValue("api.presence_penalty")}
-        },
-        QVariantMap{
-            {"root", m_project->getValue("folders.root")},
-            {"docs", m_project->getValue("folders.docs")},
-            {"src", m_project->getValue("folders.src")},
-            {"sessions", m_project->getValue("folders.sessions")},
-            {"templates", m_project->getValue("folders.templates")},
-            {"include_docs", QVariant::fromValue(m_project->getValue("folders.include_docs").toStringList())}
-        },
-        m_project->getValue("filetypes.source").toStringList(),
-        m_project->getValue("filetypes.docs").toStringList(),
-        // Convert command_pipes QVariantMap to QMap<QString, QStringList>
-        [&]() -> QMap<QString, QStringList> {
-            QMap<QString, QStringList> commandPipes;
-            QVariantMap cpMap = m_project->getValue("command_pipes").toMap();
-            for (auto it = cpMap.constBegin(); it != cpMap.constEnd(); ++it) {
-                commandPipes.insert(it.key(), it.value().toStringList());
-            }
-            return commandPipes;
-        }()
-        );
+    dlg.loadSettings(m_project->configManager()->configObject().toVariantMap());
 
     if (dlg.exec() == QDialog::Accepted) {
-        QVariantMap apiSettings;
-        QVariantMap folders;
-        QStringList sourceFileTypes;
-        QStringList docFileTypes;
-        QMap<QString, QStringList> commandPipes;
+        QVariantMap newSettings = dlg.getSettings();
 
-        dlg.getSettings(apiSettings, folders, sourceFileTypes, docFileTypes, commandPipes);
-
-        // Apply settings back to project dynamically
-        m_project->setValue("api.access_token", apiSettings.value("access_token"));
-        m_project->setValue("api.model", apiSettings.value("model"));
-        m_project->setValue("api.max_tokens", apiSettings.value("max_tokens"));
-        m_project->setValue("api.temperature", apiSettings.value("temperature"));
-        m_project->setValue("api.top_p", apiSettings.value("top_p"));
-        m_project->setValue("api.frequency_penalty", apiSettings.value("frequency_penalty"));
-        m_project->setValue("api.presence_penalty", apiSettings.value("presence_penalty"));
-
-        m_project->setValue("folders.root", folders.value("root"));
-        m_project->setValue("folders.docs", folders.value("docs"));
-        m_project->setValue("folders.src", folders.value("src"));
-        m_project->setValue("folders.sessions", folders.value("sessions"));
-        m_project->setValue("folders.templates", folders.value("templates"));
-
-        QVariant includeDocsVar = folders.value("include_docs");
-        QStringList includeDocs;
-        if (includeDocsVar.canConvert<QStringList>())
-            includeDocs = includeDocsVar.toStringList();
-        else if (includeDocsVar.canConvert<QVariantList>()) {
-            for (const QVariant &v : includeDocsVar.toList())
-                includeDocs.append(v.toString());
-        }
-        m_project->setValue("folders.include_docs", QVariant::fromValue(includeDocs));
-
-        m_project->setValue("filetypes.source", QVariant::fromValue(sourceFileTypes));
-        m_project->setValue("filetypes.docs", QVariant::fromValue(docFileTypes));
-        m_project->setValue("command_pipes", QVariant::fromValue(commandPipes));
-
-        // Update UI to reflect changes
-        loadProjectDataToUi();
+        // Apply nested settings into Project using helper
+        setProjectSettingsFromMap(m_project, newSettings);
 
         if (!m_project->save(m_project->projectFilePath())) {
             QMessageBox::warning(this, "Save Failed", "Failed to save project file.");
@@ -583,7 +570,7 @@ void MainWindow::onProjectSettingsClicked()
             statusBar()->showMessage("Project saved successfully.", 3000);
         }
 
-        // Update backend config for open sessions if needed
+        loadProjectDataToUi();
         updateBackendConfigForAllSessions();
     }
 }
