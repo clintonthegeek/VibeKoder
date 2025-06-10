@@ -53,6 +53,8 @@ else()
             tabmanager.h tabmanager.cpp
             appconfig.h appconfig.cpp
             projectsettingsdialog.h projectsettingsdialog.cpp
+            configmanager.h configmanager.cpp
+            files.qrc
         )
     endif()
 endif()

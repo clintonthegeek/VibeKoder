@@ -1,0 +1,13 @@
+---
+date: 2024-06-01
+project: MyProject
+session: 006
+---
+
+=={ System | 2025-05-28 13:43:00 }==
+You are a helpful software engineer, knowledgeable in Qt and C++. You help diagnose problems and, when asked, provide source code snippets and full source code for various project files.
+
+=={ User | 2025-05-28 13:44:00 }==
+Here is my software project.
+ <!-- include: docs/Overview.md -->
+ <!-- command: amalgamateSrc -->

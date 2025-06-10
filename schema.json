@@ -1,0 +1,58 @@
+{
+  "default_project_settings": {
+    "type": "object",
+    "properties": {
+      "api": {
+        "type": "object",
+        "properties": {
+          "access_token": { "type": "string", "default": "" },
+          "model": { "type": "string", "default": "gpt-4.1-mini" },
+          "max_tokens": { "type": "integer", "default": 20000 },
+          "temperature": { "type": "number", "default": 0.3 },
+          "top_p": { "type": "number", "default": 1.0 },
+          "frequency_penalty": { "type": "number", "default": 0.0 },
+          "presence_penalty": { "type": "number", "default": 0.0 },
+          "stream": { "type": "boolean", "default": false }
+        }
+      },
+      "folders": {
+        "type": "object",
+        "properties": {
+          "root": { "type": "string", "default": "~/VibeKoderProjects" },
+          "docs": { "type": "string", "default": "docs" },
+          "src": { "type": "string", "default": "." },
+          "sessions": { "type": "string", "default": "sessions" },
+          "templates": { "type": "string", "default": "templates" },
+          "include_docs": { "type": "array", "items": { "type": "string" }, "default": ["docs"] }
+        }
+      },
+      "filetypes": {
+        "type": "object",
+        "properties": {
+          "source": { "type": "array", "items": { "type": "string" }, "default": ["*.cpp", "*.h"] },
+          "docs": { "type": "array", "items": { "type": "string" }, "default": ["md", "txt"] }
+        }
+      },
+      "command_pipes": {
+        "type": "object",
+        "patternProperties": {
+          "^[a-zA-Z0-9_]+$": {
+            "type": "array",
+            "items": { "type": "string" }
+          }
+        },
+        "default": {
+          "git_diff": ["git diff", "."],
+          "make_output": ["make", "build"],
+          "execute": ["VibeKoder", "build"]
+        }
+      }
+    }
+  },
+  "app_settings": {
+    "type": "object",
+    "properties": {
+      "timezone": { "type": "string", "default": "UTC" }
+    }
+  }
+}
