@@ -70,8 +70,8 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 
     topButtonLayout->addWidget(m_openMarkdownButton);
     topButtonLayout->addWidget(m_openCacheButton);
-    topButtonLayout->addWidget(m_refreshButton);
     topButtonLayout->addStretch(); // Push buttons to the left
+    topButtonLayout->addWidget(m_refreshButton);
 
     mainLayout->addLayout(topButtonLayout);
 
@@ -444,6 +444,16 @@ void SessionTabWidget::markUnsavedChanges(bool changed)
 {
     m_unsavedChanges = changed;
     m_saveButton->setEnabled(changed);
+
+    if (m_refreshButton) {
+        if (changed) {
+            // Use a bright system color, e.g., yellow background
+            m_refreshButton->setStyleSheet("background-color: palette(highlight); color: palette(highlighted-text);");
+        } else {
+            // Reset to default style
+            m_refreshButton->setStyleSheet("");
+        }
+    }
 }
 
 bool SessionTabWidget::confirmDiscardUnsavedChanges()
@@ -457,6 +467,15 @@ bool SessionTabWidget::confirmDiscardUnsavedChanges()
         "You have unsaved changes and/or deletions. Discard them?",
         QMessageBox::Yes | QMessageBox::No,
         QMessageBox::No);
+
+    if (reply == QMessageBox::Yes) {
+        // User discards changes, reset refresh button style
+        if (m_refreshButton) {
+            m_refreshButton->setStyleSheet("");
+        }
+        m_unsavedChanges = false;
+        m_saveButton->setEnabled(false);
+    }
 
     return (reply == QMessageBox::Yes);
 }
@@ -792,9 +811,8 @@ void SessionTabWidget::onDeleteAfterClicked()
         m_promptSliceTree->setCurrentItem(m_promptSliceTree->topLevelItem(selectedIndex));
     }
 
-    // Enable Save and Refresh buttons
-    m_saveButton->setEnabled(true);
-    m_unsavedChanges = true;
+    // Mark unsaved changes to enable Save button and change Refresh button color
+    markUnsavedChanges(true);
 
     if (m_statusBar) {
         m_statusBar->showMessage("Deleted slices after selected slice. Press Refresh to reload deleted slices from disk.", 3000);
