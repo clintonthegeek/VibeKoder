@@ -1,19 +1,12 @@
 #include "appconfig.h"
-
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
-#include <QFileInfo>
 #include <QDebug>
-#include <QTextStream>
-#include <QCoreApplication>
-
-// For TOML parsing/writing, you can use toml++ or fallback to JSON if preferred.
-// Here we use JSON for simplicity; replace with TOML if you prefer.
-
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonArray>
+#include <QCoreApplication>
 
 AppConfig& AppConfig::instance()
 {
@@ -26,17 +19,14 @@ AppConfig::AppConfig(QObject* parent)
 {
     m_configFolder = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
     if (m_configFolder.isEmpty()) {
-        // Fallback to home/.config/VibeKoder
         m_configFolder = QDir::home().filePath(".config/VibeKoder");
     }
-
     QDir dir(m_configFolder);
     if (!dir.exists()) {
         if (!dir.mkpath(".")) {
             qWarning() << "Failed to create config folder:" << m_configFolder;
         }
     }
-
     m_configFilePath = dir.filePath("config.json");
 }
 
@@ -49,12 +39,10 @@ bool AppConfig::load()
         copyDefaultDocsAndTemplates();
         return true;
     }
-
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qWarning() << "Failed to open config file for reading:" << m_configFilePath;
         return false;
     }
-
     QByteArray data = file.readAll();
     file.close();
 
@@ -64,26 +52,43 @@ bool AppConfig::load()
         qWarning() << "Failed to parse config JSON:" << err.errorString();
         return false;
     }
-
     if (!doc.isObject()) {
         qWarning() << "Config JSON root is not an object";
         return false;
     }
-
     QJsonObject root = doc.object();
 
-    // Parse default API settings
-    if (root.contains("api") && root["api"].isObject()) {
-        QJsonObject apiObj = root["api"].toObject();
+    // Parse default_project_settings section
+    if (root.contains("default_project_settings") && root["default_project_settings"].isObject()) {
+        parseDefaultProjectSettings(root["default_project_settings"].toObject());
+    } else {
+        qWarning() << "No default_project_settings section found in config";
+    }
+
+    // Parse app_settings section
+    if (root.contains("app_settings") && root["app_settings"].isObject()) {
+        parseAppSettings(root["app_settings"].toObject());
+    } else {
+        qWarning() << "No app_settings section found in config";
+    }
+
+    return true;
+}
+
+void AppConfig::parseDefaultProjectSettings(const QJsonObject& obj)
+{
+    // Parse API settings
+    if (obj.contains("api") && obj["api"].isObject()) {
+        QJsonObject apiObj = obj["api"].toObject();
         m_apiSettings.clear();
         for (auto it = apiObj.begin(); it != apiObj.end(); ++it) {
             m_apiSettings[it.key()] = it.value().toVariant();
         }
     }
 
-    // Parse default folders
-    if (root.contains("folders") && root["folders"].isObject()) {
-        QJsonObject foldersObj = root["folders"].toObject();
+    // Parse folders
+    if (obj.contains("folders") && obj["folders"].isObject()) {
+        QJsonObject foldersObj = obj["folders"].toObject();
         m_folders.clear();
         for (auto it = foldersObj.begin(); it != foldersObj.end(); ++it) {
             m_folders[it.key()] = it.value().toVariant();
@@ -91,98 +96,120 @@ bool AppConfig::load()
     }
 
     // Parse filetypes
-    if (root.contains("filetypes") && root["filetypes"].isObject()) {
-        QJsonObject ftObj = root["filetypes"].toObject();
+    if (obj.contains("filetypes") && obj["filetypes"].isObject()) {
+        QJsonObject ftObj = obj["filetypes"].toObject();
+        m_sourceFileTypes.clear();
+        m_docFileTypes.clear();
 
         if (ftObj.contains("source") && ftObj["source"].isArray()) {
-            m_sourceFileTypes.clear();
             for (const auto& val : ftObj["source"].toArray()) {
-                m_sourceFileTypes.append(val.toString());
+                if (val.isString())
+                    m_sourceFileTypes.append(val.toString());
             }
         }
-
         if (ftObj.contains("docs") && ftObj["docs"].isArray()) {
-            m_docFileTypes.clear();
             for (const auto& val : ftObj["docs"].toArray()) {
-                m_docFileTypes.append(val.toString());
+                if (val.isString())
+                    m_docFileTypes.append(val.toString());
             }
         }
     }
 
     // Parse command pipes
-    if (root.contains("command_pipes") && root["command_pipes"].isObject()) {
-        QJsonObject cpObj = root["command_pipes"].toObject();
+    if (obj.contains("command_pipes") && obj["command_pipes"].isObject()) {
+        QJsonObject cpObj = obj["command_pipes"].toObject();
         m_commandPipes.clear();
         for (auto it = cpObj.begin(); it != cpObj.end(); ++it) {
             if (it.value().isArray()) {
                 QStringList cmds;
                 for (const auto& val : it.value().toArray()) {
-                    cmds.append(val.toString());
+                    if (val.isString())
+                        cmds.append(val.toString());
                 }
                 m_commandPipes[it.key()] = cmds;
             }
         }
     }
+}
 
-    return true;
+void AppConfig::parseAppSettings(const QJsonObject& obj)
+{
+    m_appSettings.clear();
+    for (auto it = obj.begin(); it != obj.end(); ++it) {
+        m_appSettings[it.key()] = it.value().toVariant();
+    }
 }
 
 bool AppConfig::save() const
 {
-    QJsonObject root;
+    QJsonObject rootObj;
 
+    // default_project_settings section
+    QJsonObject defaultProjObj;
+
+    // API settings
     QJsonObject apiObj;
     for (auto it = m_apiSettings.begin(); it != m_apiSettings.end(); ++it) {
         apiObj[it.key()] = QJsonValue::fromVariant(it.value());
     }
-    root["api"] = apiObj;
+    defaultProjObj["api"] = apiObj;
 
+    // Folders
     QJsonObject foldersObj;
     for (auto it = m_folders.begin(); it != m_folders.end(); ++it) {
         foldersObj[it.key()] = QJsonValue::fromVariant(it.value());
     }
-    root["folders"] = foldersObj;
+    defaultProjObj["folders"] = foldersObj;
 
-    QJsonObject ftObj;
+    // Filetypes
+    QJsonObject filetypesObj;
     QJsonArray sourceArr;
-    for (const QString& s : m_sourceFileTypes)
+    for (const QString &s : m_sourceFileTypes)
         sourceArr.append(s);
-    ftObj["source"] = sourceArr;
+    filetypesObj["source"] = sourceArr;
 
     QJsonArray docsArr;
-    for (const QString& s : m_docFileTypes)
+    for (const QString &s : m_docFileTypes)
         docsArr.append(s);
-    ftObj["docs"] = docsArr;
+    filetypesObj["docs"] = docsArr;
 
-    root["filetypes"] = ftObj;
+    defaultProjObj["filetypes"] = filetypesObj;
 
-    QJsonObject cpObj;
+    // Command pipes
+    QJsonObject cmdPipesObj;
     for (auto it = m_commandPipes.begin(); it != m_commandPipes.end(); ++it) {
-        QJsonArray arr;
-        for (const QString& cmd : it.value()) {
-            arr.append(cmd);
-        }
-        cpObj[it.key()] = arr;
+        QJsonArray cmdsArr;
+        for (const QString &cmd : it.value())
+            cmdsArr.append(cmd);
+        cmdPipesObj[it.key()] = cmdsArr;
     }
-    root["command_pipes"] = cpObj;
+    defaultProjObj["command_pipes"] = cmdPipesObj;
 
-    QJsonDocument doc(root);
+    rootObj["default_project_settings"] = defaultProjObj;
 
+    // app_settings section
+    QJsonObject appSettingsObj;
+    for (auto it = m_appSettings.begin(); it != m_appSettings.end(); ++it) {
+        appSettingsObj[it.key()] = QJsonValue::fromVariant(it.value());
+    }
+    rootObj["app_settings"] = appSettingsObj;
+
+    // Write JSON to file
+    QJsonDocument doc(rootObj);
     QFile file(m_configFilePath);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         qWarning() << "Failed to open config file for writing:" << m_configFilePath;
         return false;
     }
-
     file.write(doc.toJson(QJsonDocument::Indented));
     file.close();
-
+    qDebug() << "AppConfig saved to" << m_configFilePath;
     return true;
 }
 
 void AppConfig::createDefaultConfigFile()
 {
-    // Provide sane defaults similar to your example project file
+    // Set sane defaults for default_project_settings
     m_apiSettings = {
         {"access_token", ""},
         {"model", "gpt-4.1-mini"},
@@ -196,6 +223,7 @@ void AppConfig::createDefaultConfigFile()
         {"user", ""},
         {"logit_bias", QVariantMap()}
     };
+
     m_folders = {
         {"root", QDir::homePath() + "/VibeKoderProjects"},
         {"docs", "docs"},
@@ -204,13 +232,22 @@ void AppConfig::createDefaultConfigFile()
         {"templates", "templates"},
         {"include_docs", "docs"}
     };
+
     m_sourceFileTypes = QStringList() << "*.cpp" << "*.h";
     m_docFileTypes = QStringList() << "md" << "txt";
+
     m_commandPipes = {
         {"git_diff", {"git diff", "."}},
         {"make_output", {"make", "build"}},
         {"execute", {"VibeKoder", "build"}}
     };
+
+    // Set sane defaults for app_settings
+    m_appSettings = {
+        {"timezone", "UTC"}
+    };
+
+    // Save immediately
     save();
 }
 

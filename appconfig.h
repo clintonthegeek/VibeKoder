@@ -45,11 +45,17 @@ private:
     void createDefaultConfigFile();
     void copyDefaultDocsAndTemplates();
 
+    // Parsing helpers
+    void parseDefaultProjectSettings(const QJsonObject& obj);
+    void parseAppSettings(const QJsonObject& obj);
+
     QVariantMap m_apiSettings;
     QVariantMap m_folders;
     QStringList m_sourceFileTypes;
     QStringList m_docFileTypes;
     QMap<QString, QStringList> m_commandPipes;
+
+    QVariantMap m_appSettings;
 
     QString m_configFolder;
     QString m_configFilePath;

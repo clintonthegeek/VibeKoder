@@ -46,13 +46,6 @@ bool Project::load(const QString &filepath)
     return parseJson(data);
 }
 
-#include <QJsonDocument>
-#include <QJsonObject>
-#include <QJsonArray>
-#include <QFile>
-#include <QDir>
-#include <QDebug>
-
 bool Project::save(const QString &filepath)
 {
     QString savePath = filepath.isEmpty() ? m_projectFilePath : filepath;

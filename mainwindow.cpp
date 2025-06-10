@@ -2,6 +2,8 @@
 #include "projectsettingsdialog.h"
 #include "sessiontabwidget.h"
 #include "detachedwindow.h"
+#include "appconfig.h"
+#include "project.h"
 
 #include <QMenuBar>
 #include <QMenu>
@@ -14,6 +16,8 @@
 #include <QListWidget>
 #include <QPushButton>
 #include <QFileDialog>
+#include <QFileInfo>
+#include <QDir>
 #include <QMessageBox>
 #include <QDebug>
 #include <QStandardPaths>
@@ -44,6 +48,11 @@ void MainWindow::setupUi()
 
     // === Menu and Toolbar ===
     QMenu* projectMenu = menuBar()->addMenu("Project");
+
+    QAction* newProjectAction = new QAction("New Project", this);
+    projectMenu->addAction(newProjectAction);
+    connect(newProjectAction, &QAction::triggered, this, &MainWindow::onNewProject);
+
     QAction* openProjectAction = new QAction("Open Project", this);
     projectMenu->addAction(openProjectAction);
     connect(openProjectAction, &QAction::triggered, this, &MainWindow::onOpenProject);
@@ -171,6 +180,149 @@ void MainWindow::onNewTempSession()
     });
 }
 
+
+void MainWindow::onNewProject()
+{
+    // 1. Ask user for new project file path
+    QString filePath = QFileDialog::getSaveFileName(this,
+                                                    "Create New Project File",
+                                                    QDir::homePath(),
+                                                    "Project Files (*.json);;All Files (*)");
+    if (filePath.isEmpty())
+        return;
+
+    QFileInfo fi(filePath);
+    QDir projectRootDir = fi.dir();
+
+    // 2. Ensure project root folder exists (the folder containing the project file)
+    if (!projectRootDir.exists()) {
+        if (!projectRootDir.mkpath(".")) {
+            QMessageBox::warning(this, "Error", "Failed to create project directory.");
+            return;
+        }
+    }
+
+    // 3. Load app defaults from AppConfig
+    auto& appConfig = AppConfig::instance();
+    if (!appConfig.load()) {
+        QMessageBox::warning(this, "Error", "Failed to load application configuration.");
+        return;
+    }
+
+    QVariantMap apiSettings = appConfig.defaultApiSettings();
+    QVariantMap folders = appConfig.defaultFolders();
+    QStringList sourceFileTypes = appConfig.defaultSourceFileTypes();
+    QStringList docFileTypes = appConfig.defaultDocFileTypes();
+    QMap<QString, QStringList> commandPipes = appConfig.defaultCommandPipes();
+
+    // 4. Override root folder default with the directory of the chosen project file
+    folders["root"] = projectRootDir.absolutePath();
+
+    // 5. Show ProjectSettingsDialog initialized with these settings
+    ProjectSettingsDialog dlg(this);
+    dlg.loadSettings(apiSettings, folders, sourceFileTypes, docFileTypes, commandPipes);
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    // 6. Extract updated settings from dialog
+    dlg.getSettings(apiSettings, folders, sourceFileTypes, docFileTypes, commandPipes);
+
+    // 7. Resolve absolute root folder path from updated folders map
+    QString rootFolder = folders.value("root").toString();
+    if (!QDir(rootFolder).exists()) {
+        if (!QDir().mkpath(rootFolder)) {
+            QMessageBox::warning(this, "Error", "Failed to create root folder.");
+            return;
+        }
+    }
+
+    // 8. Create subfolders relative to root
+    QString docsFolder = QDir(rootFolder).filePath(folders.value("docs").toString());
+    QString templatesFolder = QDir(rootFolder).filePath(folders.value("templates").toString());
+    QString srcFolder = QDir(rootFolder).filePath(folders.value("src").toString());
+    QString sessionsFolder = QDir(rootFolder).filePath(folders.value("sessions").toString());
+    QDir().mkpath(docsFolder);
+    QDir().mkpath(templatesFolder);
+    QDir().mkpath(srcFolder);
+    QDir().mkpath(sessionsFolder);
+
+    // 9. Copy default docs and templates from system-wide config folder
+    QString configFolder = appConfig.configFolder(); // e.g. ~/.config/VibeKoder
+    QString defaultDocsSrc = QDir(configFolder).filePath("docs");
+    QString defaultTemplatesSrc = QDir(configFolder).filePath("templates");
+    auto copyFolderContents = [](const QString& srcDirPath, const QString& destDirPath) {
+        QDir srcDir(srcDirPath);
+        QDir destDir(destDirPath);
+        if (!srcDir.exists())
+            return;
+        if (!destDir.exists())
+            destDir.mkpath(".");
+        for (const QString& fileName : srcDir.entryList(QDir::Files)) {
+            QString srcFile = srcDir.filePath(fileName);
+            QString destFile = destDir.filePath(fileName);
+            if (!QFile::exists(destFile)) {
+                QFile::copy(srcFile, destFile);
+            }
+        }
+    };
+    copyFolderContents(defaultDocsSrc, docsFolder);
+    copyFolderContents(defaultTemplatesSrc, templatesFolder);
+
+    // 10. Create and populate new Project instance
+    Project newProject(nullptr, &appConfig);
+    newProject.setAccessToken(apiSettings.value("access_token").toString());
+    newProject.setModel(apiSettings.value("model").toString());
+    newProject.setMaxTokens(apiSettings.value("max_tokens").toInt());
+    newProject.setTemperature(apiSettings.value("temperature").toDouble());
+    newProject.setTopP(apiSettings.value("top_p").toDouble());
+    newProject.setFrequencyPenalty(apiSettings.value("frequency_penalty").toDouble());
+    newProject.setPresencePenalty(apiSettings.value("presence_penalty").toDouble());
+    newProject.setRootFolder(rootFolder);
+    newProject.setDocsFolder(docsFolder);
+    newProject.setTemplatesFolder(templatesFolder);
+    newProject.setSrcFolder(srcFolder);
+    newProject.setSessionsFolder(sessionsFolder);
+
+    QStringList includeDocs;
+    QVariant incDocsVar = folders.value("include_docs");
+    if (incDocsVar.canConvert<QStringList>())
+        includeDocs = incDocsVar.toStringList();
+    else if (incDocsVar.canConvert<QVariantList>()) {
+        for (const QVariant& v : incDocsVar.toList())
+            includeDocs.append(v.toString());
+    }
+    newProject.setIncludeDocFolders(includeDocs);
+
+    newProject.setSourceFileTypes(sourceFileTypes);
+    newProject.setDocFileTypes(docFileTypes);
+    newProject.setCommandPipes(commandPipes);
+
+    // 11. Save the new project file
+    if (!newProject.save(filePath)) {
+        QMessageBox::warning(this, "Error", "Failed to save new project file.");
+        return;
+    }
+
+    // 12. Load the new project into the app
+    if (m_project)
+        delete m_project;
+    m_project = new Project(this, &appConfig);
+    if (!m_project->load(filePath)) {
+        QMessageBox::warning(this, "Error", "Failed to load new project file.");
+        delete m_project;
+        m_project = nullptr;
+        return;
+    }
+
+    if (m_tabManager) {
+        m_tabManager->setProject(m_project);
+    }
+    loadProjectDataToUi();
+    refreshSessionList();
+    updateBackendConfigForAllSessions();
+    statusBar()->showMessage("New project created and loaded.");
+}
+
 void MainWindow::tryAutoLoadProject()
 {
     // Get current working directory (project root)
@@ -256,7 +408,9 @@ void MainWindow::onOpenProject()
         m_project = nullptr;
         return;
     }
-
+    if (m_tabManager) {
+        m_tabManager->setProject(m_project);
+    }
     loadProjectDataToUi();
     refreshSessionList();
     updateBackendConfigForAllSessions();

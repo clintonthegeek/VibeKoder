@@ -30,6 +30,7 @@ public:
 
     // Ensure Project tab is present in main tab widget
     void ensureProjectTabPresent();
+    void setProject(Project* project){m_project = project;}
 
 signals:
     void sessionOpened(const QString& sessionFilePath, SessionTabWidget* tab);
