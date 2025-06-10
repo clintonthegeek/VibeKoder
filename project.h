@@ -3,100 +3,55 @@
 
 #include <QObject>
 #include <QString>
+#include <QVariant>
 #include <QStringList>
-#include <QMap>
-#include "appconfig.h"  // include AppConfig header
-
+#include "configmanager.h"
 
 class Project : public QObject
 {
     Q_OBJECT
 public:
-    explicit Project(QObject *parent = nullptr,
-                     AppConfig* appConfig = nullptr);
+    explicit Project(QObject *parent = nullptr);
+    ~Project() override;
 
+    // Load project config JSON file and schema, initialize ConfigManager
     bool load(const QString &filepath);
+
+    // Save project config JSON file
     bool save(const QString &filepath = QString());
+
+    // Dynamic accessors for any config key by dot-separated path
+    QVariant getValue(const QString &keyPath, const QVariant &defaultValue = QVariant()) const;
+    void setValue(const QString &keyPath, const QVariant &value);
+
+    // Convenience getters for common project settings
+    QString rootFolder() const { return getValue("folders.root").toString(); }
+    QString docsFolder() const { return getValue("folders.docs").toString(); }
+    QString srcFolder() const { return getValue("folders.src").toString(); }
+    QString sessionsFolder() const { return getValue("folders.sessions").toString(); }
+    QString templatesFolder() const { return getValue("folders.templates").toString(); }
+    QStringList includeDocFolders() const { return getValue("folders.include_docs").toStringList(); }
+
+    QString accessToken() const { return getValue("api.access_token").toString(); }
+    QString model() const { return getValue("api.model").toString(); }
+    int maxTokens() const { return getValue("api.max_tokens").toInt(); }
+    double temperature() const { return getValue("api.temperature").toDouble(); }
+    double topP() const { return getValue("api.top_p").toDouble(); }
+    double frequencyPenalty() const { return getValue("api.frequency_penalty").toDouble(); }
+    double presencePenalty() const { return getValue("api.presence_penalty").toDouble(); }
+
+    // Access underlying ConfigManager (optional)
+    ConfigManager* configManager() const { return m_configManager; }
+
+    // Get project config file path
     QString projectFilePath() const { return m_projectFilePath; }
 
-
-    // Getters for config fields
-    QString rootFolder() const;
-    QString docsFolder() const;
-    QString srcFolder() const;
-    QString sessionsFolder() const;
-    QString templatesFolder() const;
-    QStringList includeDocFolders() const; // absolute paths
-
-    QStringList sourceFileTypes() const;
-    QStringList docFileTypes() const;
-
-    // command pipe name -> [command, working_dir (relative to root)]
-    QMap<QString, QStringList> commandPipes() const;
-
-    // API getters
-    QString accessToken() const;
-    QString model() const;
-    int maxTokens() const;
-    double temperature() const;
-    double topP() const;
-    double frequencyPenalty() const;
-    double presencePenalty() const;
-
-    // Setters for folders and filetypes
-    void setRootFolder(const QString &folder);
-    void setDocsFolder(const QString &folder);
-    void setSrcFolder(const QString &folder);
-    void setSessionsFolder(const QString &folder);
-    void setTemplatesFolder(const QString &folder);
-    void setIncludeDocFolders(const QStringList &folders);
-
-    void setSourceFileTypes(const QStringList &types);
-    void setDocFileTypes(const QStringList &types);
-    void setCommandPipes(const QMap<QString, QStringList> &pipes);
-
-    // Setters for API parameters
-    void setAccessToken(const QString &token);
-    void setModel(const QString &model);
-    void setMaxTokens(int maxTokens);
-    void setTemperature(double temperature);
-    void setTopP(double topP);
-    void setFrequencyPenalty(double penalty);
-    void setPresencePenalty(double penalty);
-
-    // Recursive scanning stubs
-    QStringList scanDocsRecursive() const;
-    QStringList scanSourceRecursive() const;
-
 private:
-    AppConfig* m_appConfig = nullptr;  // pointer to app-level config singleton or injected instance
-
-    bool parseJson(const QByteArray &data);
-
-    // Member variables representing config
     QString m_projectFilePath;
-    QString resolveFolderPath(const QString& folder) const;
+    ConfigManager* m_configManager = nullptr;
 
-    QString m_rootFolder;
-    QString m_docsFolder;
-    QString m_srcFolder;
-    QString m_sessionsFolder;
-    QString m_templatesFolder;
-    QStringList m_includeDocFolders;
-
-    QStringList m_sourceFileTypes;
-    QStringList m_docFileTypes;
-
-    QMap<QString, QStringList> m_commandPipes;
-
-    // API keys and params
-    QString m_accessToken;
-    QString m_model;
-    int m_maxTokens;
-    double m_temperature;
-    double m_topP;
-    double m_frequencyPenalty;
-    double m_presencePenalty;
+    // Helper to determine schema path (could be from AppConfig or fixed location)
+    QString schemaFilePath() const;
 };
 
 #endif // PROJECT_H

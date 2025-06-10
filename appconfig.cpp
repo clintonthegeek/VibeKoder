@@ -1,12 +1,13 @@
 #include "appconfig.h"
+
 #include <QStandardPaths>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QDebug>
 #include <QJsonDocument>
 #include <QJsonObject>
-#include <QJsonArray>
-#include <QCoreApplication>
+#include <QXmlStreamWriter>
 
 AppConfig& AppConfig::instance()
 {
@@ -28,277 +29,217 @@ AppConfig::AppConfig(QObject* parent)
         }
     }
     m_configFilePath = dir.filePath("config.json");
+
+    // Initialize ConfigManager with config and schema paths
+    m_configManager = new ConfigManager(m_configFilePath, QDir(m_configFolder).filePath("schema.json"), this);
+
+    // Connect configChanged signal to propagate
+    connect(m_configManager, &ConfigManager::configChanged, this, &AppConfig::configChanged);
 }
 
 bool AppConfig::load()
 {
-    QFile file(m_configFilePath);
-    if (!file.exists()) {
-        qDebug() << "Config file does not exist, creating default:" << m_configFilePath;
-        createDefaultConfigFile();
-        copyDefaultDocsAndTemplates();
-        return true;
-    }
-    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        qWarning() << "Failed to open config file for reading:" << m_configFilePath;
+    initializeConfigFolder();
+
+    bool loaded = m_configManager->load();
+    if (!loaded) {
+        qWarning() << "Failed to load config via ConfigManager";
         return false;
     }
-    QByteArray data = file.readAll();
-    file.close();
 
-    QJsonParseError err;
-    QJsonDocument doc = QJsonDocument::fromJson(data, &err);
-    if (err.error != QJsonParseError::NoError) {
-        qWarning() << "Failed to parse config JSON:" << err.errorString();
-        return false;
-    }
-    if (!doc.isObject()) {
-        qWarning() << "Config JSON root is not an object";
-        return false;
-    }
-    QJsonObject root = doc.object();
-
-    // Parse default_project_settings section
-    if (root.contains("default_project_settings") && root["default_project_settings"].isObject()) {
-        parseDefaultProjectSettings(root["default_project_settings"].toObject());
-    } else {
-        qWarning() << "No default_project_settings section found in config";
-    }
-
-    // Parse app_settings section
-    if (root.contains("app_settings") && root["app_settings"].isObject()) {
-        parseAppSettings(root["app_settings"].toObject());
-    } else {
-        qWarning() << "No app_settings section found in config";
+    // Optionally validate config here
+    if (!m_configManager->validate()) {
+        qWarning() << "Config validation failed";
+        // You may choose to handle validation failure (e.g., reset to defaults)
     }
 
     return true;
-}
-
-void AppConfig::parseDefaultProjectSettings(const QJsonObject& obj)
-{
-    // Parse API settings
-    if (obj.contains("api") && obj["api"].isObject()) {
-        QJsonObject apiObj = obj["api"].toObject();
-        m_apiSettings.clear();
-        for (auto it = apiObj.begin(); it != apiObj.end(); ++it) {
-            m_apiSettings[it.key()] = it.value().toVariant();
-        }
-    }
-
-    // Parse folders
-    if (obj.contains("folders") && obj["folders"].isObject()) {
-        QJsonObject foldersObj = obj["folders"].toObject();
-        m_folders.clear();
-        for (auto it = foldersObj.begin(); it != foldersObj.end(); ++it) {
-            m_folders[it.key()] = it.value().toVariant();
-        }
-    }
-
-    // Parse filetypes
-    if (obj.contains("filetypes") && obj["filetypes"].isObject()) {
-        QJsonObject ftObj = obj["filetypes"].toObject();
-        m_sourceFileTypes.clear();
-        m_docFileTypes.clear();
-
-        if (ftObj.contains("source") && ftObj["source"].isArray()) {
-            for (const auto& val : ftObj["source"].toArray()) {
-                if (val.isString())
-                    m_sourceFileTypes.append(val.toString());
-            }
-        }
-        if (ftObj.contains("docs") && ftObj["docs"].isArray()) {
-            for (const auto& val : ftObj["docs"].toArray()) {
-                if (val.isString())
-                    m_docFileTypes.append(val.toString());
-            }
-        }
-    }
-
-    // Parse command pipes
-    if (obj.contains("command_pipes") && obj["command_pipes"].isObject()) {
-        QJsonObject cpObj = obj["command_pipes"].toObject();
-        m_commandPipes.clear();
-        for (auto it = cpObj.begin(); it != cpObj.end(); ++it) {
-            if (it.value().isArray()) {
-                QStringList cmds;
-                for (const auto& val : it.value().toArray()) {
-                    if (val.isString())
-                        cmds.append(val.toString());
-                }
-                m_commandPipes[it.key()] = cmds;
-            }
-        }
-    }
-}
-
-void AppConfig::parseAppSettings(const QJsonObject& obj)
-{
-    m_appSettings.clear();
-    for (auto it = obj.begin(); it != obj.end(); ++it) {
-        m_appSettings[it.key()] = it.value().toVariant();
-    }
 }
 
 bool AppConfig::save() const
 {
-    QJsonObject rootObj;
-
-    // default_project_settings section
-    QJsonObject defaultProjObj;
-
-    // API settings
-    QJsonObject apiObj;
-    for (auto it = m_apiSettings.begin(); it != m_apiSettings.end(); ++it) {
-        apiObj[it.key()] = QJsonValue::fromVariant(it.value());
-    }
-    defaultProjObj["api"] = apiObj;
-
-    // Folders
-    QJsonObject foldersObj;
-    for (auto it = m_folders.begin(); it != m_folders.end(); ++it) {
-        foldersObj[it.key()] = QJsonValue::fromVariant(it.value());
-    }
-    defaultProjObj["folders"] = foldersObj;
-
-    // Filetypes
-    QJsonObject filetypesObj;
-    QJsonArray sourceArr;
-    for (const QString &s : m_sourceFileTypes)
-        sourceArr.append(s);
-    filetypesObj["source"] = sourceArr;
-
-    QJsonArray docsArr;
-    for (const QString &s : m_docFileTypes)
-        docsArr.append(s);
-    filetypesObj["docs"] = docsArr;
-
-    defaultProjObj["filetypes"] = filetypesObj;
-
-    // Command pipes
-    QJsonObject cmdPipesObj;
-    for (auto it = m_commandPipes.begin(); it != m_commandPipes.end(); ++it) {
-        QJsonArray cmdsArr;
-        for (const QString &cmd : it.value())
-            cmdsArr.append(cmd);
-        cmdPipesObj[it.key()] = cmdsArr;
-    }
-    defaultProjObj["command_pipes"] = cmdPipesObj;
-
-    rootObj["default_project_settings"] = defaultProjObj;
-
-    // app_settings section
-    QJsonObject appSettingsObj;
-    for (auto it = m_appSettings.begin(); it != m_appSettings.end(); ++it) {
-        appSettingsObj[it.key()] = QJsonValue::fromVariant(it.value());
-    }
-    rootObj["app_settings"] = appSettingsObj;
-
-    // Write JSON to file
-    QJsonDocument doc(rootObj);
-    QFile file(m_configFilePath);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        qWarning() << "Failed to open config file for writing:" << m_configFilePath;
-        return false;
-    }
-    file.write(doc.toJson(QJsonDocument::Indented));
-    file.close();
-    qDebug() << "AppConfig saved to" << m_configFilePath;
-    return true;
+    return m_configManager->save();
 }
 
-void AppConfig::createDefaultConfigFile()
+QVariant AppConfig::getValue(const QString& keyPath, const QVariant& defaultValue) const
 {
-    // Set sane defaults for default_project_settings
-    m_apiSettings = {
-        {"access_token", ""},
-        {"model", "gpt-4.1-mini"},
-        {"max_tokens", 20000},
-        {"temperature", 0.3},
-        {"top_p", 1.0},
-        {"frequency_penalty", 0.0},
-        {"presence_penalty", 0.0},
-        {"stream", false},
-        {"stop_sequences", QVariantList()},
-        {"user", ""},
-        {"logit_bias", QVariantMap()}
-    };
-
-    m_folders = {
-        {"root", QDir::homePath() + "/VibeKoderProjects"},
-        {"docs", "docs"},
-        {"src", "."},
-        {"sessions", "sessions"},
-        {"templates", "templates"},
-        {"include_docs", "docs"}
-    };
-
-    m_sourceFileTypes = QStringList() << "*.cpp" << "*.h";
-    m_docFileTypes = QStringList() << "md" << "txt";
-
-    m_commandPipes = {
-        {"git_diff", {"git diff", "."}},
-        {"make_output", {"make", "build"}},
-        {"execute", {"VibeKoder", "build"}}
-    };
-
-    // Set sane defaults for app_settings
-    m_appSettings = {
-        {"timezone", "UTC"}
-    };
-
-    // Save immediately
-    save();
+    if (!m_configManager)
+        return defaultValue;
+    return m_configManager->getValue(keyPath, defaultValue);
 }
 
-void AppConfig::copyDefaultDocsAndTemplates()
+void AppConfig::setValue(const QString& keyPath, const QVariant& value)
 {
-    // Copy default docs and templates from a known folder inside app installation directory
-    // For example, assume app installs defaults under:
-    // <app_install_dir>/defaults/docs and <app_install_dir>/defaults/templates
-    // We copy them to m_configFolder/docs and m_configFolder/templates if those folders don't exist.
+    if (!m_configManager)
+        return;
+    m_configManager->setValue(keyPath, value);
+}
 
-    // Determine app install directory (example using QCoreApplication)
-    QString appDir = QCoreApplication::applicationDirPath();
+QString AppConfig::configFolder() const
+{
+    return m_configFolder;
+}
 
-    QString defaultDocsSrc = QDir(appDir).filePath("defaults/docs");
-    QString defaultTemplatesSrc = QDir(appDir).filePath("defaults/templates");
+QString AppConfig::configFilePath() const
+{
+    return m_configFilePath;
+}
 
-    QString docsDest = QDir(m_configFolder).filePath("docs");
-    QString templatesDest = QDir(m_configFolder).filePath("templates");
-
-    QDir destDir;
-
-    if (!QDir(docsDest).exists() && QDir(defaultDocsSrc).exists()) {
-        destDir.mkpath(docsDest);
-        QDir srcDir(defaultDocsSrc);
-        for (const QString& fileName : srcDir.entryList(QDir::Files)) {
-            QFile::copy(srcDir.filePath(fileName), QDir(docsDest).filePath(fileName));
+void AppConfig::initializeConfigFolder()
+{
+    // Ensure config folder exists
+    QDir dir(m_configFolder);
+    if (!dir.exists()) {
+        if (!dir.mkpath(".")) {
+            qWarning() << "Failed to create config folder:" << m_configFolder;
+            return;
         }
     }
 
-    if (!QDir(templatesDest).exists() && QDir(defaultTemplatesSrc).exists()) {
-        destDir.mkpath(templatesDest);
-        QDir srcDir(defaultTemplatesSrc);
-        for (const QString& fileName : srcDir.entryList(QDir::Files)) {
-            QFile::copy(srcDir.filePath(fileName), QDir(templatesDest).filePath(fileName));
+    // Copy default resources (schema.json, templates) if missing
+    copyDefaultResources();
+
+    // Generate config.xml from schema.json if missing
+    generateConfigJsonFromSchema();
+}
+
+void AppConfig::copyDefaultResources()
+{
+    // Copy schema.json from resource
+    QString schemaDestPath = QDir(m_configFolder).filePath("schema.json");
+    if (!QFile::exists(schemaDestPath)) {
+        QFile schemaFile(":/config/schema.json");
+        if (schemaFile.open(QIODevice::ReadOnly)) {
+            QFile outFile(schemaDestPath);
+            if (outFile.open(QIODevice::WriteOnly)) {
+                outFile.write(schemaFile.readAll());
+                outFile.close();
+                qDebug() << "Copied schema.json to" << schemaDestPath;
+            } else {
+                qWarning() << "Failed to open schema.json destination for writing:" << schemaDestPath;
+            }
+            schemaFile.close();
+        } else {
+            qWarning() << "Failed to open schema.json resource";
+        }
+    }
+
+    // Copy templates from resource, renaming .VKTemplate to .md
+    QString templatesDestDir = QDir(m_configFolder).filePath("templates");
+    QDir templatesDir(templatesDestDir);
+    if (!templatesDir.exists()) {
+        if (!QDir(m_configFolder).mkpath("templates")) {
+            qWarning() << "Failed to create templates folder:" << templatesDestDir;
+            return;
+        }
+    }
+
+    const QStringList templateResources = {
+        ":/templates/Development.VKTemplate",
+        ":/templates/SimpleQuery.VKTemplate"
+    };
+
+    for (const QString& resPath : templateResources) {
+        QFileInfo fi(resPath);
+        QString baseName = fi.completeBaseName(); // e.g. "Development"
+        QString destFileName = baseName + ".md";
+        QString destFilePath = templatesDir.filePath(destFileName);
+
+        if (!QFile::exists(destFilePath)) {
+            QFile resFile(resPath);
+            if (resFile.open(QIODevice::ReadOnly)) {
+                QFile outFile(destFilePath);
+                if (outFile.open(QIODevice::WriteOnly)) {
+                    outFile.write(resFile.readAll());
+                    outFile.close();
+                    qDebug() << "Copied template" << resPath << "to" << destFilePath;
+                } else {
+                    qWarning() << "Failed to open template destination for writing:" << destFilePath;
+                }
+                resFile.close();
+            } else {
+                qWarning() << "Failed to open template resource:" << resPath;
+            }
         }
     }
 }
 
-// Getters and setters
+void AppConfig::generateConfigJsonFromSchema()
+{
+    QString configJsonPath = QDir(m_configFolder).filePath("config.json");
+    if (QFile::exists(configJsonPath))
+        return; // Don't overwrite existing config.json
 
-QVariantMap AppConfig::defaultApiSettings() const { return m_apiSettings; }
-QVariantMap AppConfig::defaultFolders() const { return m_folders; }
-QStringList AppConfig::defaultSourceFileTypes() const { return m_sourceFileTypes; }
-QStringList AppConfig::defaultDocFileTypes() const { return m_docFileTypes; }
-QMap<QString, QStringList> AppConfig::defaultCommandPipes() const { return m_commandPipes; }
+    QString schemaPath = QDir(m_configFolder).filePath("schema.json");
+    QFile schemaFile(schemaPath);
+    if (!schemaFile.open(QIODevice::ReadOnly)) {
+        qWarning() << "Failed to open schema.json for generating config.json";
+        return;
+    }
+    QByteArray schemaData = schemaFile.readAll();
+    schemaFile.close();
 
-void AppConfig::setDefaultApiSettings(const QVariantMap& apiSettings) { m_apiSettings = apiSettings; }
-void AppConfig::setDefaultFolders(const QVariantMap& folders) { m_folders = folders; }
-void AppConfig::setDefaultSourceFileTypes(const QStringList& types) { m_sourceFileTypes = types; }
-void AppConfig::setDefaultDocFileTypes(const QStringList& types) { m_docFileTypes = types; }
-void AppConfig::setDefaultCommandPipes(const QMap<QString, QStringList>& pipes) { m_commandPipes = pipes; }
+    QJsonParseError err;
+    QJsonDocument schemaDoc = QJsonDocument::fromJson(schemaData, &err);
+    if (err.error != QJsonParseError::NoError) {
+        qWarning() << "Failed to parse schema.json for generating config.json:" << err.errorString();
+        return;
+    }
+    if (!schemaDoc.isObject()) {
+        qWarning() << "schema.json root is not an object for generating config.json";
+        return;
+    }
+    QJsonObject schemaObj = schemaDoc.object();
 
-QString AppConfig::configFolder() const { return m_configFolder; }
-QString AppConfig::configFilePath() const { return m_configFilePath; }
+    // Recursive lambda to extract defaults from a schema object
+    std::function<QJsonObject(const QJsonObject&)> buildDefaults;
+    buildDefaults = [&](const QJsonObject& schema) -> QJsonObject {
+        QJsonObject result;
+        if (!schema.contains("properties") || !schema.value("properties").isObject())
+            return result;
+        QJsonObject props = schema.value("properties").toObject();
+        for (const QString& key : props.keys()) {
+            QJsonObject propSchema = props.value(key).toObject();
+            if (propSchema.contains("default")) {
+                result.insert(key, propSchema.value("default"));
+            } else if (propSchema.value("type") == "object") {
+                result.insert(key, buildDefaults(propSchema));
+            }
+            // else skip keys without defaults
+        }
+        return result;
+    };
+
+    QJsonObject defaultConfig;
+
+    // Extract defaults for default_project_settings
+    if (schemaObj.contains("default_project_settings") && schemaObj.value("default_project_settings").isObject()) {
+        QJsonObject dpsSchema = schemaObj.value("default_project_settings").toObject();
+        QJsonObject dpsDefaults = buildDefaults(dpsSchema);
+        defaultConfig.insert("default_project_settings", dpsDefaults);
+    } else {
+        qWarning() << "Schema missing 'default_project_settings' object";
+    }
+
+    // Extract defaults for app_settings
+    if (schemaObj.contains("app_settings") && schemaObj.value("app_settings").isObject()) {
+        QJsonObject appSchema = schemaObj.value("app_settings").toObject();
+        QJsonObject appDefaults = buildDefaults(appSchema);
+        defaultConfig.insert("app_settings", appDefaults);
+    } else {
+        qWarning() << "Schema missing 'app_settings' object";
+    }
+
+    QFile configFile(configJsonPath);
+    if (!configFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning() << "Failed to open config.json for writing";
+        return;
+    }
+
+    QJsonDocument configDoc(defaultConfig);
+    configFile.write(configDoc.toJson(QJsonDocument::Indented));
+    configFile.close();
+
+    qDebug() << "Generated config.json with defaults from schema at" << configJsonPath;
+}
+

@@ -45,7 +45,9 @@ QString CommandPipeManager::runSrcAmalgamate()
     }
 
     QString srcFolder = m_project->srcFolder();
-    if (srcFolder.isEmpty()) {
+    if (!QDir(srcFolder).isAbsolute()) {
+        srcFolder = QDir(m_project->rootFolder()).filePath(srcFolder);
+    }    if (srcFolder.isEmpty()) {
         QString err = "Project source folder is empty";
         qWarning() << "[runSrcAmalgamate]" << err;
         return err;
@@ -91,7 +93,9 @@ QStringList CommandPipeManager::scanSourceFiles() const
     }
 
     QString srcFolder = m_project->srcFolder();
-    QStringList sourceFileTypes = m_project->sourceFileTypes();
+    if (!QDir(srcFolder).isAbsolute()) {
+        srcFolder = QDir(m_project->rootFolder()).filePath(srcFolder);
+    }    QStringList sourceFileTypes = m_project->getValue("filetypes.source").toStringList();
 
     if (srcFolder.isEmpty()) {
         qWarning() << "[scanSourceFiles] Source folder is empty";
@@ -123,6 +127,7 @@ QStringList CommandPipeManager::scanSourceFiles() const
     while (it.hasNext()) {
         QString filePath = it.next();
 
+        //TODO: REPLACE THIS WITH EXCLUDE SETTINGS
         // Exclude any path containing build
         QString normalizedPath = QDir::toNativeSeparators(filePath).toLower();
         if (normalizedPath.contains(QDir::toNativeSeparators("/build/")) ||
@@ -139,8 +144,8 @@ QStringList CommandPipeManager::scanSourceFiles() const
             continue;
         }
 
-        if (parts.contains("toml")) {
-            qDebug() << "skipping TOML:" << filePath;
+        if (parts.contains("newconfig.json")) {
+            qDebug() << "skipping VK:" << filePath;
             continue;
         }
 

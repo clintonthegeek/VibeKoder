@@ -180,7 +180,6 @@ void MainWindow::onNewTempSession()
     });
 }
 
-
 void MainWindow::onNewProject()
 {
     // 1. Ask user for new project file path
@@ -209,11 +208,18 @@ void MainWindow::onNewProject()
         return;
     }
 
-    QVariantMap apiSettings = appConfig.defaultApiSettings();
-    QVariantMap folders = appConfig.defaultFolders();
-    QStringList sourceFileTypes = appConfig.defaultSourceFileTypes();
-    QStringList docFileTypes = appConfig.defaultDocFileTypes();
-    QMap<QString, QStringList> commandPipes = appConfig.defaultCommandPipes();
+    // Replace with dynamic access to AppConfig via ConfigManager
+    QVariantMap apiSettings = appConfig.getValue("default_project_settings.api").toMap();
+    QVariantMap folders = appConfig.getValue("default_project_settings.folders").toMap();
+    QStringList sourceFileTypes = appConfig.getValue("default_project_settings.filetypes.source").toStringList();
+    QStringList docFileTypes = appConfig.getValue("default_project_settings.filetypes.docs").toStringList();
+
+    // Convert command_pipes QVariantMap to QMap<QString, QStringList>
+    QVariantMap cmdPipeMap = appConfig.getValue("default_project_settings.command_pipes").toMap();
+    QMap<QString, QStringList> commandPipes;
+    for (auto it = cmdPipeMap.constBegin(); it != cmdPipeMap.constEnd(); ++it) {
+        commandPipes.insert(it.key(), it.value().toStringList());
+    }
 
     // 4. Override root folder default with the directory of the chosen project file
     folders["root"] = projectRootDir.absolutePath();
@@ -268,21 +274,30 @@ void MainWindow::onNewProject()
     copyFolderContents(defaultDocsSrc, docsFolder);
     copyFolderContents(defaultTemplatesSrc, templatesFolder);
 
-    // 10. Create and populate new Project instance
-    Project newProject(nullptr, &appConfig);
-    newProject.setAccessToken(apiSettings.value("access_token").toString());
-    newProject.setModel(apiSettings.value("model").toString());
-    newProject.setMaxTokens(apiSettings.value("max_tokens").toInt());
-    newProject.setTemperature(apiSettings.value("temperature").toDouble());
-    newProject.setTopP(apiSettings.value("top_p").toDouble());
-    newProject.setFrequencyPenalty(apiSettings.value("frequency_penalty").toDouble());
-    newProject.setPresencePenalty(apiSettings.value("presence_penalty").toDouble());
-    newProject.setRootFolder(rootFolder);
-    newProject.setDocsFolder(docsFolder);
-    newProject.setTemplatesFolder(templatesFolder);
-    newProject.setSrcFolder(srcFolder);
-    newProject.setSessionsFolder(sessionsFolder);
+    // 10. Create Project instance on heap and load it to initialize ConfigManager
+    Project* newProject = new Project(this);
+    if (!newProject->load(filePath)) {
+        QMessageBox::warning(this, "Error", "Failed to load new project file.");
+        delete newProject;
+        return;
+    }
 
+    // 11. Set values dynamically
+    newProject->setValue("api.access_token", apiSettings.value("access_token"));
+    newProject->setValue("api.model", apiSettings.value("model"));
+    newProject->setValue("api.max_tokens", apiSettings.value("max_tokens"));
+    newProject->setValue("api.temperature", apiSettings.value("temperature"));
+    newProject->setValue("api.top_p", apiSettings.value("top_p"));
+    newProject->setValue("api.frequency_penalty", apiSettings.value("frequency_penalty"));
+    newProject->setValue("api.presence_penalty", apiSettings.value("presence_penalty"));
+
+    newProject->setValue("folders.root", rootFolder);
+    newProject->setValue("folders.docs", docsFolder);
+    newProject->setValue("folders.templates", templatesFolder);
+    newProject->setValue("folders.src", srcFolder);
+    newProject->setValue("folders.sessions", sessionsFolder);
+
+    // Handle include_docs as QStringList
     QStringList includeDocs;
     QVariant incDocsVar = folders.value("include_docs");
     if (incDocsVar.canConvert<QStringList>())
@@ -291,39 +306,36 @@ void MainWindow::onNewProject()
         for (const QVariant& v : incDocsVar.toList())
             includeDocs.append(v.toString());
     }
-    newProject.setIncludeDocFolders(includeDocs);
+    newProject->setValue("folders.include_docs", QVariant::fromValue(includeDocs));
 
-    newProject.setSourceFileTypes(sourceFileTypes);
-    newProject.setDocFileTypes(docFileTypes);
-    newProject.setCommandPipes(commandPipes);
+    newProject->setValue("filetypes.source", QVariant::fromValue(sourceFileTypes));
+    newProject->setValue("filetypes.docs", QVariant::fromValue(docFileTypes));
+    newProject->setValue("command_pipes", QVariant::fromValue(commandPipes));
 
-    // 11. Save the new project file
-    if (!newProject.save(filePath)) {
+    // 12. Save the new project file
+    if (!newProject->save(filePath)) {
         QMessageBox::warning(this, "Error", "Failed to save new project file.");
+        delete newProject;
         return;
     }
 
-    // 12. Load the new project into the app
-    // Close all open session tabs before switching projects
+    // 13. Close all open session tabs before switching projects
     if (m_tabManager) {
         auto openSessions = m_tabManager->openSessions();
         for (const QString& sessionPath : openSessions.keys()) {
             m_tabManager->closeSession(sessionPath);
         }
     }
+
+    // 14. Replace current project pointer with new project
     if (m_project)
         delete m_project;
-    m_project = new Project(this, &appConfig);
-    if (!m_project->load(filePath)) {
-        QMessageBox::warning(this, "Error", "Failed to load new project file.");
-        delete m_project;
-        m_project = nullptr;
-        return;
-    }
+    m_project = newProject;
 
     if (m_tabManager) {
         m_tabManager->setProject(m_project);
     }
+
     loadProjectDataToUi();
     refreshSessionList();
     updateBackendConfigForAllSessions();
@@ -441,16 +453,31 @@ void MainWindow::loadProjectDataToUi()
         return;
     }
 
+    // Helper lambda to resolve relative folder paths to absolute
+    auto resolvePath = [&](const QString& folder) -> QString {
+        if (QDir(folder).isAbsolute())
+            return QDir::cleanPath(folder);
+        return QDir(m_project->rootFolder()).filePath(folder);
+    };
+
+    QString rootFolder = m_project->rootFolder();
+    QString docsFolder = resolvePath(m_project->getValue("folders.docs").toString());
+    QString srcFolder = resolvePath(m_project->srcFolder());
+    QString sessionsFolder = resolvePath(m_project->sessionsFolder());
+    QString templatesFolder = resolvePath(m_project->templatesFolder());
+    QStringList includeDocFolders = m_project->getValue("folders.include_docs").toStringList();
+
     // Display project folder info (simple HTML)
     QString html;
-    html += "<b>Project Root:</b> " + m_project->rootFolder() + "<br>";
-    html += "<b>Docs Folder:</b> " + m_project->docsFolder() + "<br>";
-    html += "<b>Source Folder:</b> " + m_project->srcFolder() + "<br>";
-    html += "<b>Sessions Folder:</b> " + m_project->sessionsFolder() + "<br>";
-    html += "<b>Templates Folder:</b> " + m_project->templatesFolder() + "<br>";
+    html += "<b>Project Root:</b> " + rootFolder + "<br>";
+    html += "<b>Docs Folder:</b> " + docsFolder + "<br>";
+    html += "<b>Source Folder:</b> " + srcFolder + "<br>";
+    html += "<b>Sessions Folder:</b> " + sessionsFolder + "<br>";
+    html += "<b>Templates Folder:</b> " + templatesFolder + "<br>";
     html += "<b>Include Doc Folders:</b><ul>";
-    for (const QString &incFolder : m_project->includeDocFolders()) {
-        html += "<li>" + incFolder + "</li>";
+    for (const QString &incFolder : includeDocFolders) {
+        QString absIncFolder = resolvePath(incFolder);
+        html += "<li>" + absIncFolder + "</li>";
     }
     html += "</ul>";
 
@@ -458,7 +485,7 @@ void MainWindow::loadProjectDataToUi()
 
     // Populate template list
     m_templateList->clear();
-    QDir templatesDir(m_project->templatesFolder());
+    QDir templatesDir(templatesFolder);
     if (templatesDir.exists()) {
         QStringList filters{"*.md", "*.markdown"};
         QFileInfoList files = templatesDir.entryInfoList(filters, QDir::Files);
@@ -480,25 +507,33 @@ void MainWindow::onProjectSettingsClicked()
     // Load current project settings into dialog
     dlg.loadSettings(
         QVariantMap{
-            {"access_token", m_project->accessToken()},
-            {"model", m_project->model()},
-            {"max_tokens", m_project->maxTokens()},
-            {"temperature", m_project->temperature()},
-            {"top_p", m_project->topP()},
-            {"frequency_penalty", m_project->frequencyPenalty()},
-            {"presence_penalty", m_project->presencePenalty()}
+            {"access_token", m_project->getValue("api.access_token")},
+            {"model", m_project->getValue("api.model")},
+            {"max_tokens", m_project->getValue("api.max_tokens")},
+            {"temperature", m_project->getValue("api.temperature")},
+            {"top_p", m_project->getValue("api.top_p")},
+            {"frequency_penalty", m_project->getValue("api.frequency_penalty")},
+            {"presence_penalty", m_project->getValue("api.presence_penalty")}
         },
         QVariantMap{
-            {"root", m_project->rootFolder()},
-            {"docs", m_project->docsFolder()},
-            {"src", m_project->srcFolder()},
-            {"sessions", m_project->sessionsFolder()},
-            {"templates", m_project->templatesFolder()},
-            {"include_docs", QVariant::fromValue(m_project->includeDocFolders())}
+            {"root", m_project->getValue("folders.root")},
+            {"docs", m_project->getValue("folders.docs")},
+            {"src", m_project->getValue("folders.src")},
+            {"sessions", m_project->getValue("folders.sessions")},
+            {"templates", m_project->getValue("folders.templates")},
+            {"include_docs", QVariant::fromValue(m_project->getValue("folders.include_docs").toStringList())}
         },
-        m_project->sourceFileTypes(),
-        m_project->docFileTypes(),
-        m_project->commandPipes()
+        m_project->getValue("filetypes.source").toStringList(),
+        m_project->getValue("filetypes.docs").toStringList(),
+        // Convert command_pipes QVariantMap to QMap<QString, QStringList>
+        [&]() -> QMap<QString, QStringList> {
+            QMap<QString, QStringList> commandPipes;
+            QVariantMap cpMap = m_project->getValue("command_pipes").toMap();
+            for (auto it = cpMap.constBegin(); it != cpMap.constEnd(); ++it) {
+                commandPipes.insert(it.key(), it.value().toStringList());
+            }
+            return commandPipes;
+        }()
         );
 
     if (dlg.exec() == QDialog::Accepted) {
@@ -510,35 +545,34 @@ void MainWindow::onProjectSettingsClicked()
 
         dlg.getSettings(apiSettings, folders, sourceFileTypes, docFileTypes, commandPipes);
 
-        // Apply settings back to project
-        m_project->setAccessToken(apiSettings.value("access_token").toString());
-        m_project->setModel(apiSettings.value("model").toString());
-        m_project->setMaxTokens(apiSettings.value("max_tokens").toInt());
-        m_project->setTemperature(apiSettings.value("temperature").toDouble());
-        m_project->setTopP(apiSettings.value("top_p").toDouble());
-        m_project->setFrequencyPenalty(apiSettings.value("frequency_penalty").toDouble());
-        m_project->setPresencePenalty(apiSettings.value("presence_penalty").toDouble());
+        // Apply settings back to project dynamically
+        m_project->setValue("api.access_token", apiSettings.value("access_token"));
+        m_project->setValue("api.model", apiSettings.value("model"));
+        m_project->setValue("api.max_tokens", apiSettings.value("max_tokens"));
+        m_project->setValue("api.temperature", apiSettings.value("temperature"));
+        m_project->setValue("api.top_p", apiSettings.value("top_p"));
+        m_project->setValue("api.frequency_penalty", apiSettings.value("frequency_penalty"));
+        m_project->setValue("api.presence_penalty", apiSettings.value("presence_penalty"));
 
-        m_project->setRootFolder(folders.value("root").toString());
-        m_project->setDocsFolder(folders.value("docs").toString());
-        m_project->setSrcFolder(folders.value("src").toString());
-        m_project->setSessionsFolder(folders.value("sessions").toString());
-        m_project->setTemplatesFolder(folders.value("templates").toString());
+        m_project->setValue("folders.root", folders.value("root"));
+        m_project->setValue("folders.docs", folders.value("docs"));
+        m_project->setValue("folders.src", folders.value("src"));
+        m_project->setValue("folders.sessions", folders.value("sessions"));
+        m_project->setValue("folders.templates", folders.value("templates"));
 
-        // include_docs is QStringList stored as QVariant
         QVariant includeDocsVar = folders.value("include_docs");
+        QStringList includeDocs;
         if (includeDocsVar.canConvert<QStringList>())
-            m_project->setIncludeDocFolders(includeDocsVar.toStringList());
+            includeDocs = includeDocsVar.toStringList();
         else if (includeDocsVar.canConvert<QVariantList>()) {
-            QStringList list;
             for (const QVariant &v : includeDocsVar.toList())
-                list.append(v.toString());
-            m_project->setIncludeDocFolders(list);
+                includeDocs.append(v.toString());
         }
+        m_project->setValue("folders.include_docs", QVariant::fromValue(includeDocs));
 
-        m_project->setSourceFileTypes(sourceFileTypes);
-        m_project->setDocFileTypes(docFileTypes);
-        m_project->setCommandPipes(commandPipes);
+        m_project->setValue("filetypes.source", QVariant::fromValue(sourceFileTypes));
+        m_project->setValue("filetypes.docs", QVariant::fromValue(docFileTypes));
+        m_project->setValue("command_pipes", QVariant::fromValue(commandPipes));
 
         // Update UI to reflect changes
         loadProjectDataToUi();
@@ -560,7 +594,16 @@ void MainWindow::refreshSessionList()
     if (!m_project)
         return;
 
-    QDir sessionsDir(m_project->sessionsFolder());
+    // Helper lambda to resolve relative folder paths to absolute
+    auto resolvePath = [&](const QString& folder) -> QString {
+        if (QDir(folder).isAbsolute())
+            return QDir::cleanPath(folder);
+        return QDir(m_project->rootFolder()).filePath(folder);
+    };
+
+    QString sessionsFolder = resolvePath(m_project->getValue("folders.sessions").toString());
+
+    QDir sessionsDir(sessionsFolder);
     if (!sessionsDir.exists())
         return;
 
@@ -584,7 +627,15 @@ void MainWindow::onCreateSessionFromTemplate()
     }
 
     QString templateName = selItem->text();
-    QString templatePath = QDir(m_project->templatesFolder()).filePath(templateName);
+
+    // Resolve templates folder path relative to project root
+    auto resolvePath = [&](const QString& folder) -> QString {
+        if (QDir(folder).isAbsolute())
+            return QDir::cleanPath(folder);
+        return QDir(m_project->rootFolder()).filePath(folder);
+    };
+    QString templatesFolder = resolvePath(m_project->getValue("folders.templates").toString());
+    QString templatePath = QDir(templatesFolder).filePath(templateName);
 
     QFile templateFile(templatePath);
     if (!templateFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -595,7 +646,8 @@ void MainWindow::onCreateSessionFromTemplate()
     QString templateContent = QString::fromUtf8(templateFile.readAll());
     templateFile.close();
 
-    QDir sessionsDir(m_project->sessionsFolder());
+    QString sessionsFolder = resolvePath(m_project->getValue("folders.sessions").toString());
+    QDir sessionsDir(sessionsFolder);
     if (!sessionsDir.exists())
         sessionsDir.mkpath(".");
 
@@ -640,7 +692,16 @@ void MainWindow::onOpenSelectedSession()
     }
 
     QString sessionName = selItem->text();
-    QString sessionPath = QDir(m_project->sessionsFolder()).filePath(sessionName);
+
+    // Resolve sessions folder path relative to project root
+    auto resolvePath = [&](const QString& folder) -> QString {
+        if (QDir(folder).isAbsolute())
+            return QDir::cleanPath(folder);
+        return QDir(m_project->rootFolder()).filePath(folder);
+    };
+    QString sessionsFolder = resolvePath(m_project->getValue("folders.sessions").toString());
+
+    QString sessionPath = QDir(sessionsFolder).filePath(sessionName);
 
     SessionTabWidget* tab = m_tabManager->openSession(sessionPath);
     m_tabWidget->setCurrentWidget(tab);

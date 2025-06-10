@@ -1,1 +1,9 @@
-<RCC/>
+<RCC>
+    <qresource prefix="/config">
+        <file>schema.json</file>
+    </qresource>
+    <qresource prefix="/templates">
+        <file>Development.VKTemplate</file>
+        <file>SimpleQuery.VKTemplate</file>
+    </qresource>
+</RCC>

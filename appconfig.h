@@ -3,9 +3,9 @@
 
 #include <QObject>
 #include <QString>
-#include <QMap>
-#include <QStringList>
 #include <QVariantMap>
+
+#include "configmanager.h"
 
 class AppConfig : public QObject
 {
@@ -13,25 +13,15 @@ class AppConfig : public QObject
 public:
     static AppConfig& instance();
 
-    // Load config from disk; returns true if successful or created defaults
+    // Load config from disk or create defaults if missing
     bool load();
 
-    // Save config to disk
+    // Save current config to disk
     bool save() const;
 
-    // Getters for default project settings
-    QVariantMap defaultApiSettings() const;
-    QVariantMap defaultFolders() const;
-    QStringList defaultSourceFileTypes() const;
-    QStringList defaultDocFileTypes() const;
-    QMap<QString, QStringList> defaultCommandPipes() const;
-
-    // Setters for default project settings
-    void setDefaultApiSettings(const QVariantMap& apiSettings);
-    void setDefaultFolders(const QVariantMap& folders);
-    void setDefaultSourceFileTypes(const QStringList& types);
-    void setDefaultDocFileTypes(const QStringList& types);
-    void setDefaultCommandPipes(const QMap<QString, QStringList>& pipes);
+    // Access config values dynamically
+    QVariant getValue(const QString& keyPath, const QVariant& defaultValue = QVariant()) const;
+    void setValue(const QString& keyPath, const QVariant& value);
 
     // Path to config folder and config file
     QString configFolder() const;
@@ -42,23 +32,20 @@ signals:
 
 private:
     explicit AppConfig(QObject* parent = nullptr);
-    void createDefaultConfigFile();
-    void copyDefaultDocsAndTemplates();
 
-    // Parsing helpers
-    void parseDefaultProjectSettings(const QJsonObject& obj);
-    void parseAppSettings(const QJsonObject& obj);
+    // Initialize config folder and copy default resources if needed
+    void initializeConfigFolder();
 
-    QVariantMap m_apiSettings;
-    QVariantMap m_folders;
-    QStringList m_sourceFileTypes;
-    QStringList m_docFileTypes;
-    QMap<QString, QStringList> m_commandPipes;
+    // Copy schema and templates from resource to user config folder
+    void copyDefaultResources();
 
-    QVariantMap m_appSettings;
+    // Generate config.xml from schema.json (optional)
+    void generateConfigJsonFromSchema();
 
     QString m_configFolder;
     QString m_configFilePath;
+
+    ConfigManager* m_configManager = nullptr;
 };
 
 #endif // APPCONFIG_H

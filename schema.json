@@ -29,7 +29,7 @@
       "filetypes": {
         "type": "object",
         "properties": {
-          "source": { "type": "array", "items": { "type": "string" }, "default": ["*.cpp", "*.h"] },
+          "source": { "type": "array", "items": { "type": "string" }, "default": ["*.cpp", "*.h", "CMakeLists.txt"] },
           "docs": { "type": "array", "items": { "type": "string" }, "default": ["md", "txt"] }
         }
       },
