@@ -92,10 +92,10 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     });
 
     // Editable slice editor (replaces m_commandOutput)
-    m_sliceEditor = new QTextEdit(splitter);
-    m_sliceEditor->setAcceptRichText(false);
-    m_sliceEditor->setPlaceholderText("Edit selected prompt slice here...");
-    m_sliceEditor->setEnabled(false); // Disabled until a slice is selected
+    m_sliceViewer = new QTextEdit(splitter);
+    m_sliceViewer->setAcceptRichText(false);
+    m_sliceViewer->setPlaceholderText("Edit selected prompt slice here...");
+    m_sliceViewer->setEnabled(false); // Disabled until a slice is selected
 
     // Horizontal layout for buttons
     auto buttonLayout = new QHBoxLayout();
@@ -147,7 +147,7 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     connect(m_promptSliceTree, &QTreeWidget::itemSelectionChanged, this, &SessionTabWidget::onPromptSliceSelected);
 
     // Update slice content when edited
-    connect(m_sliceEditor, &QTextEdit::textChanged, this, [this]() {
+    connect(m_sliceViewer, &QTextEdit::textChanged, this, [this]() {
         if (m_updatingEditor)
             return; // Ignore programmatic updates
 
@@ -156,13 +156,13 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
             return;
 
         int idx = selectedItems.first()->data(0, Qt::UserRole).toInt();
-        QString newContent = m_sliceEditor->toPlainText();
+        QString newContent = m_sliceViewer->toPlainText();
 
         // Ignore if newContent is empty and slice content is already empty (no change)
         if (newContent.isEmpty() && m_session.promptSliceContent(idx).isEmpty())
             return;
 
-        // qDebug() << "[m_sliceEditor::textChanged] Updating slice index:" << idx
+        // qDebug() << "[m_sliceViewer::textChanged] Updating slice index:" << idx
         //          << "new content preview:\n" << newContent.left(200).replace('\n', "\\n");
 
         m_session.setPromptSliceContent(idx, newContent);
@@ -246,10 +246,10 @@ void SessionTabWidget::buildPromptSliceTree()
     m_forkButton->setEnabled(false);
 
     if (m_currentRequestId.isEmpty()) {
-        m_sliceEditor->blockSignals(true);
-        m_sliceEditor->clear();
-        m_sliceEditor->setEnabled(false);
-        m_sliceEditor->blockSignals(false);
+        m_sliceViewer->blockSignals(true);
+        m_sliceViewer->clear();
+        m_sliceViewer->setEnabled(false);
+        m_sliceViewer->blockSignals(false);
     }
 
     int count = m_promptSliceTree->topLevelItemCount();
@@ -292,10 +292,10 @@ void SessionTabWidget::onRefreshClicked()
     buildPromptSliceTree();
 
     // Clear editor and disable until a slice is selected
-    m_sliceEditor->blockSignals(true);
-    m_sliceEditor->clear();
-    m_sliceEditor->setEnabled(false);
-    m_sliceEditor->blockSignals(false);
+    m_sliceViewer->blockSignals(true);
+    m_sliceViewer->clear();
+    m_sliceViewer->setEnabled(false);
+    m_sliceViewer->blockSignals(false);
 
     m_partialResponseBuffer.clear();
 
@@ -309,10 +309,10 @@ void SessionTabWidget::onPromptSliceSelected()
     m_forkButton->setEnabled(hasSelection);
 
     if (!hasSelection) {
-        m_sliceEditor->blockSignals(true);
-        m_sliceEditor->clear();
-        m_sliceEditor->setEnabled(false);
-        m_sliceEditor->blockSignals(false);
+        m_sliceViewer->blockSignals(true);
+        m_sliceViewer->clear();
+        m_sliceViewer->setEnabled(false);
+        m_sliceViewer->blockSignals(false);
         qDebug() << "[onPromptSliceSelected] No selection, editor cleared";
         return;
     }
@@ -320,10 +320,10 @@ void SessionTabWidget::onPromptSliceSelected()
     int index = selectedItems.first()->data(0, Qt::UserRole).toInt();
     // qDebug() << "[onPromptSliceSelected] Index:" << index << "Slice count:" << m_session.slices().size();
     if (index < 0 || index >= m_session.slices().size()) {
-        m_sliceEditor->blockSignals(true);
-        m_sliceEditor->clear();
-        m_sliceEditor->setEnabled(false);
-        m_sliceEditor->blockSignals(false);
+        m_sliceViewer->blockSignals(true);
+        m_sliceViewer->clear();
+        m_sliceViewer->setEnabled(false);
+        m_sliceViewer->blockSignals(false);
         return;
     }
 
@@ -335,12 +335,12 @@ void SessionTabWidget::onPromptSliceSelected()
     //          << "content preview:" << slice.content.left(30);
 
     m_updatingEditor = true;
-    m_sliceEditor->blockSignals(true);
+    m_sliceViewer->blockSignals(true);
 
-    m_sliceEditor->setPlainText(slice.content);
-    m_sliceEditor->setEnabled(!slice.content.isEmpty());
+    m_sliceViewer->setPlainText(slice.content);
+    m_sliceViewer->setEnabled(!slice.content.isEmpty());
 
-    m_sliceEditor->blockSignals(false);
+    m_sliceViewer->blockSignals(false);
     m_updatingEditor = false;
 }
 
@@ -488,8 +488,8 @@ void SessionTabWidget::onSendClicked()
         item->setText(2, promptSliceSummary(slice));
 
         m_promptSliceTree->setCurrentItem(item);
-        m_sliceEditor->setEnabled(true);
-        m_sliceEditor->clear();
+        m_sliceViewer->setEnabled(true);
+        m_sliceViewer->clear();
         m_partialResponseBuffer.clear();
     }
 
@@ -526,11 +526,11 @@ void SessionTabWidget::onPartialResponse(const QString &requestId, const QString
     m_partialResponseBuffer += partialText;
 
     // Update slice editor without triggering textChanged signal
-    m_sliceEditor->blockSignals(true);
+    m_sliceViewer->blockSignals(true);
     m_updatingEditor = true;
-    m_sliceEditor->setPlainText(m_partialResponseBuffer);
+    m_sliceViewer->setPlainText(m_partialResponseBuffer);
     m_updatingEditor = false;
-    m_sliceEditor->blockSignals(false);
+    m_sliceViewer->blockSignals(false);
 
     // Update assistant slice content in session
     QVector<PromptSlice> &slices = m_session.slices();
@@ -543,9 +543,9 @@ void SessionTabWidget::onPartialResponse(const QString &requestId, const QString
     }
 
     // Scroll to bottom
-    QTextCursor cursor = m_sliceEditor->textCursor();
+    QTextCursor cursor = m_sliceViewer->textCursor();
     cursor.movePosition(QTextCursor::End);
-    m_sliceEditor->setTextCursor(cursor);
+    m_sliceViewer->setTextCursor(cursor);
 }
 
 void SessionTabWidget::onFinished(const QString &requestId, const QString &fullResponse)
@@ -568,10 +568,10 @@ void SessionTabWidget::onFinished(const QString &requestId, const QString &fullR
         m_promptSliceTree->setCurrentItem(m_promptSliceTree->topLevelItem(lastIndex));
     }
 
-    m_sliceEditor->blockSignals(true);
+    m_sliceViewer->blockSignals(true);
     m_updatingEditor = true;
-    m_sliceEditor->setPlainText(fullResponse);
-    m_updatingEditor = false;    m_sliceEditor->blockSignals(false);
+    m_sliceViewer->setPlainText(fullResponse);
+    m_updatingEditor = false;    m_sliceViewer->blockSignals(false);
 
     if (!saveSession()) {
         QMessageBox::warning(this, "Error", "Failed to save session after assistant response.");

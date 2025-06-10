@@ -67,7 +67,7 @@ private:
     QPushButton* m_forkButton = nullptr;
     QPushButton* m_openMarkdownButton = nullptr;
     QPushButton* m_openCacheButton = nullptr;
-    QTextEdit* m_sliceEditor = nullptr;
+    QTextEdit* m_sliceViewer = nullptr;
     QPlainTextEdit* m_appendUserPrompt = nullptr;
     QPushButton* m_sendButton = nullptr;
 
