@@ -58,12 +58,6 @@ private:
     QMap<QString, SessionTabWidget*> m_openSessions;
 
     QMap<QString, SessionTabWidget*> m_pendingSessions;
-
-    void dumpOpenSessions() const;
-
-
-
-
 };
 
 #endif // MAINWINDOW_H

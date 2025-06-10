@@ -54,15 +54,10 @@ void MainWindow::setupUi()
     connect(openSessionAction, &QAction::triggered, this, &MainWindow::onOpenSession);
     connect(saveSessionAction, &QAction::triggered, this, &MainWindow::onSaveSession);
 
-    QAction* dumpSessionsAction = new QAction("Dump Sessions", this);
-    dumpSessionsAction->setToolTip("Dump current open sessions to debug output");
-    connect(dumpSessionsAction, &QAction::triggered, this, &MainWindow::dumpOpenSessions);
-
     QToolBar* toolbar = addToolBar("Main Toolbar");
     toolbar->addAction(openProjectAction);
     toolbar->addAction(openSessionAction);
     toolbar->addAction(saveSessionAction);
-    toolbar->addAction(dumpSessionsAction);  // Add here
 
     statusBar();
 
@@ -183,31 +178,6 @@ void MainWindow::tryAutoLoadProject()
     } else {
         qDebug() << "Multiple project files found in VK folder; skipping auto-load.";
     }
-}
-
-void MainWindow::dumpOpenSessions() const
-{
-    qDebug() << "=== Dumping Open Sessions ===";
-    for (auto it = m_openSessions.begin(); it != m_openSessions.end(); ++it) {
-        QString key = it.key();
-        QWidget* w = it.value();
-        qDebug() << "Session:" << key << ", Widget:" << w;
-        if (w) {
-            QWidget* parent = w->parentWidget();
-            qDebug() << "  Parent chain:";
-            while (parent) {
-                qDebug() << "   " << parent;
-                parent = parent->parentWidget();
-            }
-        }
-    }
-    int projIndex = m_tabWidget->indexOf(m_projectTab);
-    qDebug() << "[MainWindow] Project tab index:" << projIndex
-             << "Tab count:" << m_tabWidget->count();
-    if (projIndex == -1) {
-        qWarning() << "[MainWindow] Project tab is missing from main tab widget!";
-    }
-    qDebug() << "=== End Dump ===";
 }
 
 void MainWindow::updateBackendConfigForAllSessions()
