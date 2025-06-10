@@ -1,13 +1,15 @@
 #include "project.h"
 
 #include <QFile>
-#include <fstream>  // For std::ofstream
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QJsonValue>
 #include <QDir>
 #include <QFileInfo>
 #include <QDebug>
 #include <QDirIterator>
 
-#include "toml.hpp"
 
 Project::Project(QObject *parent,
                  AppConfig* appConfig)
@@ -38,12 +40,10 @@ bool Project::load(const QString &filepath)
 
     m_projectFilePath = filepath;
 
-    const QString content = QString::fromUtf8(file.readAll());
+    QByteArray data = file.readAll();
+    file.close();
 
-    bool ok = parseToml(content, filepath);
-    if (ok)
-        qDebug() << "Project loaded with root folder:" << m_rootFolder;
-    return ok;
+    return parseJson(data);
 }
 
 bool Project::save(const QString &filepath)
@@ -53,242 +53,142 @@ bool Project::save(const QString &filepath)
         qWarning() << "No project file path specified for saving.";
         return false;
     }
-
-    // try {
-    //     toml::table root;
-
-    //     // [api] section
-    //     toml::table apiTable;
-    //     apiTable.insert("access_token", m_accessToken);
-    //     apiTable.insert("model", m_model);
-    //     apiTable.insert("max_tokens", m_maxTokens);
-    //     apiTable.insert("temperature", m_temperature);
-    //     apiTable.insert("top_p", m_topP);
-    //     apiTable.insert("frequency_penalty", m_frequencyPenalty);
-    //     apiTable.insert("presence_penalty", m_presencePenalty);
-    //     root.insert("api", apiTable);
-
-    //     // [folders] section
-    //     toml::table foldersTable;
-    //     foldersTable.insert("root", m_rootFolder);
-    //     foldersTable.insert("docs", m_docsFolder);
-    //     foldersTable.insert("src", m_srcFolder);
-    //     foldersTable.insert("sessions", m_sessionsFolder);
-    //     foldersTable.insert("templates", m_templatesFolder);
-
-    //     // include_docs as array
-    //     toml::array includeDocsArray;
-    //     for (const QString &folder : m_includeDocFolders) {
-    //         includeDocsArray.push_back(folder.toStdString());
-    //     }
-    //     foldersTable.insert("include_docs", includeDocsArray);
-
-    //     root.insert("folders", foldersTable);
-
-    //     // [filetypes] section
-    //     toml::table filetypesTable;
-    //     toml::array sourceArray;
-    //     for (const QString &ext : m_sourceFileTypes) {
-    //         sourceArray.push_back(ext.toStdString());
-    //     }
-    //     filetypesTable.insert("source", sourceArray);
-
-    //     toml::array docsArray;
-    //     for (const QString &ext : m_docFileTypes) {
-    //         docsArray.push_back(ext.toStdString());
-    //     }
-    //     filetypesTable.insert("docs", docsArray);
-
-    //     root.insert("filetypes", filetypesTable);
-
-    //     // [command_pipes] section
-    //     toml::table commandPipesTable;
-    //     for (auto it = m_commandPipes.constBegin(); it != m_commandPipes.constEnd(); ++it) {
-    //         toml::array cmdArray;
-    //         for (const QString &cmd : it.value()) {
-    //             cmdArray.push_back(cmd.toStdString());
-    //         }
-    //         commandPipesTable.insert(it.key().toStdString(), cmdArray);
-    //     }
-    //     root.insert("command_pipes", commandPipesTable);
-
-    //     // Write to file
-    //     std::ofstream ofs(savePath.toStdString());
-    //     if (!ofs.is_open()) {
-    //         qWarning() << "Failed to open project file for writing:" << savePath;
-    //         return false;
-    //     }
-    //     ofs << root;
-    //     ofs.close();
-
-    //     m_projectFilePath = savePath; // Update current project file path if needed
-
-    //     qDebug() << "Project saved to" << savePath;
-    //     return true;
-    // } catch (const std::exception &ex) {
-    //     qWarning() << "Exception saving project file:" << ex.what();
-    //     return false;
-    // }
+    return true;
 }
 
-bool Project::parseToml(const QString &content, const QString &projectFilePath)
+QString Project::resolveFolderPath(const QString& folder) const
 {
-    try {
-        toml::table root = toml::parse(content.toStdString());
+    if (folder.isEmpty())
+        return QString();
 
-        // **** Determine m_rootFolder ****
-        // If [folders] root="." then set root as folder containing the project file
-        if (auto foldersNode = root.get("folders")) {
-            if (auto foldersTable = foldersNode->as_table()) {
-                if (auto rootNode = foldersTable->get("root")) {
-                    if (auto valStr = rootNode->as_string()) {
-                        QString rootPath = QString::fromStdString(valStr->get()).trimmed();
-                        if (rootPath == ".") {
-                            QFileInfo fi(projectFilePath);
-                            m_rootFolder = fi.absolutePath();
-                        } else {
-                            m_rootFolder = QDir::cleanPath(QDir(m_rootFolder).filePath(rootPath));
-                        }
-                    }
-                } else {
-                    // Default root folder - directory of project file
-                    QFileInfo fi(projectFilePath);
-                    m_rootFolder = fi.absolutePath();
-                }
+    QFileInfo fi(folder);
+    if (fi.isAbsolute())
+        return QDir::cleanPath(folder);
 
-                // Parse subfolders relative to root
-                auto getSubfolder = [&](const char* name, QString &memberVar) {
-                    if (auto node = foldersTable->get(name)) {
-                        if (auto strVal = node->as_string()) {
-                            memberVar = QDir(m_rootFolder).filePath(QString::fromStdString(strVal->get()).trimmed());
-                        }
-                    }
-                };
-                getSubfolder("docs", m_docsFolder);
-                getSubfolder("src", m_srcFolder);
-                getSubfolder("sessions", m_sessionsFolder);
-                getSubfolder("templates", m_templatesFolder);
+    // Relative path: prepend root folder
+    return QDir(m_rootFolder).filePath(folder);
+}
 
-                // include_docs as array or single string with ~ expansion
-                if (auto inclNode = foldersTable->get("include_docs")) {
-                    m_includeDocFolders.clear();
-                    if (inclNode->is_array()) {
-                        for (const auto& el : *inclNode->as_array()) {
-                            if (auto strVal = el.as_string()) {
-                                QString folder = QString::fromStdString(strVal->get()).trimmed();
-                                if (folder.startsWith("~")) {
-                                    folder.replace(0, 1, QDir::homePath());
-                                }
-                                if (QDir::isAbsolutePath(folder))
-                                    m_includeDocFolders.append(QDir::cleanPath(folder));
-                                else
-                                    m_includeDocFolders.append(QDir(m_rootFolder).filePath(folder));
-                            }
-                        }
-                    } else if (auto strVal = inclNode->as_string()) {
-                        QString folder = QString::fromStdString(strVal->get()).trimmed();
-                        if (folder.startsWith("~")) {
-                            folder.replace(0, 1, QDir::homePath());
-                        }
-                        if (QDir::isAbsolutePath(folder))
-                            m_includeDocFolders.append(QDir::cleanPath(folder));
-                        else
-                            m_includeDocFolders.append(QDir(m_rootFolder).filePath(folder));
-                    }
-                }
-            }
-        }
-
-        // **** Filetypes ****
-        if (auto ftNode = root.get("filetypes")) {
-            if (auto ftTable = ftNode->as_table()) {
-                auto readStrList = [](const toml::node* node) -> QStringList {
-                    QStringList list;
-                    if (!node) return list;
-                    if (node->is_array()) {
-                        for (const auto& el : *node->as_array()) {
-                            if (auto strVal = el.as_string()) {
-                                list.append(QString::fromStdString(strVal->get()));
-                            }
-                        }
-                    } else if (auto strVal = node->as_string()) {
-                        list.append(QString::fromStdString(strVal->get()));
-                    }
-                    return list;
-                };
-
-                m_sourceFileTypes = readStrList(ftTable->get("source"));
-                m_docFileTypes = readStrList(ftTable->get("docs"));
-            }
-        }
-
-        // **** Command Pipes ****
-        if (auto cmdNode = root.get("command_pipes")) {
-            if (auto cmdTable = cmdNode->as_table()) {
-                m_commandPipes.clear();
-                for (const auto& [keyObj, valNode] : *cmdTable) {
-                    QString key = QString::fromStdString(std::string(keyObj.str()));
-                    QStringList cmdList;
-                    if (auto arrPtr = valNode.as_array()) {
-                        for (const auto& el : *arrPtr) {
-                            if (auto strVal = el.as_string()) {
-                                cmdList << QString::fromStdString(strVal->get());
-                            }
-                        }
-                    } else if (auto strVal = valNode.as_string()) {
-                        cmdList << QString::fromStdString(strVal->get());
-                    }
-                    m_commandPipes.insert(key, cmdList);
-                }
-            }
-        }
-
-        // **** API section ****
-        if (auto apiNode = root.get("api")) {
-            if (auto apiTable = apiNode->as_table()) {
-                auto readStr = [&](const char* name) -> QString {
-                    if (auto node = apiTable->get(name)) {
-                        if (auto strVal = node->as_string())
-                            return QString::fromStdString(strVal->get());
-                    }
-                    return QString();
-                };
-
-                m_accessToken = readStr("access_token");
-                m_model = readStr("model");
-                if (m_model.isEmpty())
-                    m_model = "gpt-4.1-mini";
-
-                auto readInt = [&](const char* name, int def) {
-                    if (auto node = apiTable->get(name)) {
-                        if (auto intVal = node->as_integer())
-                            return static_cast<int>(intVal->get());
-                    }
-                    return def;
-                };
-
-                m_maxTokens = readInt("max_tokens", 800);
-
-                auto readDouble = [&](const char* name, double def) {
-                    if (auto node = apiTable->get(name)) {
-                        if (auto dblVal = node->as_floating_point())
-                            return dblVal->get();
-                    }
-                    return def;
-                };
-
-                m_temperature = readDouble("temperature", 0.3);
-                m_topP = readDouble("top_p", 1.0);
-                m_frequencyPenalty = readDouble("frequency_penalty", 0.0);
-                m_presencePenalty = readDouble("presence_penalty", 0.0);
-            }
-        }
-
-        return true;
-    } catch (const std::exception& ex) {
-        qWarning() << "Exception during TOML parse:" << ex.what();
+bool Project::parseJson(const QByteArray &data)
+{
+    QJsonParseError parseError;
+    QJsonDocument doc = QJsonDocument::fromJson(data, &parseError);
+    if (parseError.error != QJsonParseError::NoError) {
+        qWarning() << "JSON parse error in project file:" << parseError.errorString();
         return false;
     }
+    if (!doc.isObject()) {
+        qWarning() << "Project file root is not a JSON object";
+        return false;
+    }
+
+    QJsonObject root = doc.object();
+
+    // Parse folders
+    if (root.contains("folders") && root["folders"].isObject()) {
+        QJsonObject foldersObj = root["folders"].toObject();
+
+        auto getString = [&](const QString &key) -> QString {
+            return foldersObj.contains(key) && foldersObj[key].isString() ? foldersObj[key].toString() : QString();
+        };
+
+        m_rootFolder = getString("root");
+        m_docsFolder = getString("docs");
+        m_srcFolder = getString("src");
+        m_sessionsFolder = getString("sessions");
+        m_templatesFolder = getString("templates");
+
+        // include_docs can be string or array
+        if (foldersObj.contains("include_docs")) {
+            if (foldersObj["include_docs"].isString()) {
+                m_includeDocFolders = QStringList() << foldersObj["include_docs"].toString();
+            } else if (foldersObj["include_docs"].isArray()) {
+                m_includeDocFolders.clear();
+                for (const QJsonValue &val : foldersObj["include_docs"].toArray()) {
+                    if (val.isString())
+                        m_includeDocFolders.append(val.toString());
+                }
+            }
+        }
+
+        //set relative paths for folders
+        m_docsFolder = resolveFolderPath(m_docsFolder);
+        m_srcFolder = resolveFolderPath(m_srcFolder);
+        m_sessionsFolder = resolveFolderPath(m_sessionsFolder);
+        m_templatesFolder = resolveFolderPath(m_templatesFolder);
+
+        // For includeDocFolders, resolve each entry similarly:
+        QStringList resolvedIncludeDocs;
+        for (const QString& incFolder : m_includeDocFolders) {
+            resolvedIncludeDocs.append(resolveFolderPath(incFolder));
+        }
+        m_includeDocFolders = resolvedIncludeDocs;
+    }
+
+    // Parse filetypes
+    if (root.contains("filetypes") && root["filetypes"].isObject()) {
+        QJsonObject ftObj = root["filetypes"].toObject();
+
+        auto readStringList = [&](const QString &key) -> QStringList {
+            QStringList list;
+            if (ftObj.contains(key) && ftObj[key].isArray()) {
+                for (const QJsonValue &val : ftObj[key].toArray()) {
+                    if (val.isString())
+                        list.append(val.toString());
+                }
+            }
+            return list;
+        };
+
+        m_sourceFileTypes = readStringList("source");
+        m_docFileTypes = readStringList("docs");
+    }
+
+    // Parse command pipes
+    if (root.contains("command_pipes") && root["command_pipes"].isObject()) {
+        QJsonObject cpObj = root["command_pipes"].toObject();
+        m_commandPipes.clear();
+        for (const QString &key : cpObj.keys()) {
+            if (cpObj[key].isArray()) {
+                QStringList cmds;
+                for (const QJsonValue &val : cpObj[key].toArray()) {
+                    if (val.isString())
+                        cmds.append(val.toString());
+                }
+                m_commandPipes.insert(key, cmds);
+            }
+        }
+    }
+
+    // Parse API section
+    if (root.contains("api") && root["api"].isObject()) {
+        QJsonObject apiObj = root["api"].toObject();
+
+        auto getString = [&](const QString &key) -> QString {
+            return apiObj.contains(key) && apiObj[key].isString() ? apiObj[key].toString() : QString();
+        };
+
+        auto getInt = [&](const QString &key, int def) -> int {
+            return apiObj.contains(key) && apiObj[key].isDouble() ? apiObj[key].toInt(def) : def;
+        };
+
+        auto getDouble = [&](const QString &key, double def) -> double {
+            return apiObj.contains(key) && apiObj[key].isDouble() ? apiObj[key].toDouble(def) : def;
+        };
+
+        m_accessToken = getString("access_token");
+        m_model = getString("model");
+        if (m_model.isEmpty())
+            m_model = "gpt-4.1-mini";
+
+        m_maxTokens = getInt("max_tokens", 800);
+        m_temperature = getDouble("temperature", 0.3);
+        m_topP = getDouble("top_p", 1.0);
+        m_frequencyPenalty = getDouble("frequency_penalty", 0.0);
+        m_presencePenalty = getDouble("presence_penalty", 0.0);
+    }
+
+    return true;
 }
 
 // Expand doc files in all includeDocFolders recursively and return matched file paths

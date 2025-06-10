@@ -188,13 +188,13 @@ void MainWindow::tryAutoLoadProject()
 
     QDir vkDir(currentDir.filePath(vkFolderName));
 
-    // Find all .toml files in VK folder (non-recursive)
+    // Find all .json files in VK folder (non-recursive)
     QStringList filters;
-    filters << "*.toml";
-    QFileInfoList tomlFiles = vkDir.entryInfoList(filters, QDir::Files | QDir::NoSymLinks);
+    filters << "*.json";
+    QFileInfoList jsonFiles = vkDir.entryInfoList(filters, QDir::Files | QDir::NoSymLinks);
 
-    if (tomlFiles.size() == 1) {
-        QString projectFilePath = tomlFiles.first().absoluteFilePath();
+    if (jsonFiles.size() == 1) {
+        QString projectFilePath = jsonFiles.first().absoluteFilePath();
         qDebug() << "Auto-loading project file:" << projectFilePath;
 
         if (m_project)
@@ -211,7 +211,7 @@ void MainWindow::tryAutoLoadProject()
         loadProjectDataToUi();
         refreshSessionList();
         statusBar()->showMessage("Project auto-loaded.");
-    } else if (tomlFiles.isEmpty()) {
+    } else if (jsonFiles.isEmpty()) {
         qDebug() << "No project files found in VK folder.";
     } else {
         qDebug() << "Multiple project files found in VK folder; skipping auto-load.";
@@ -242,7 +242,7 @@ void MainWindow::updateBackendConfigForAllSessions()
 
 void MainWindow::onOpenProject()
 {
-    QString fileName = QFileDialog::getOpenFileName(this, "Open Project File", QString(), "Project Files (*.toml)");
+    QString fileName = QFileDialog::getOpenFileName(this, "Open Project File", QString(), "Project Files (*.json)");
     if (fileName.isEmpty())
         return;
 

@@ -69,10 +69,11 @@ public:
 private:
     AppConfig* m_appConfig = nullptr;  // pointer to app-level config singleton or injected instance
 
-    bool parseToml(const QString &content, const QString &projectFilePath);
+    bool parseJson(const QByteArray &data);
 
     // Member variables representing config
     QString m_projectFilePath;
+    QString resolveFolderPath(const QString& folder) const;
 
     QString m_rootFolder;
     QString m_docsFolder;
