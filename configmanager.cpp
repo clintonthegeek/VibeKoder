@@ -65,6 +65,12 @@ bool ConfigManager::load()
     return true;
 }
 
+void ConfigManager::setConfigObject(const QJsonObject &obj)
+{
+    m_configObject = obj;
+    emit configChanged();
+}
+
 bool ConfigManager::save() const
 {
     QFile configFile(m_configFilePath);

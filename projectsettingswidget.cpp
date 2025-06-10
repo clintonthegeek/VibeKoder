@@ -23,11 +23,6 @@ ProjectSettingsWidget::ProjectSettingsWidget(QWidget *parent)
     : QWidget(parent)
 {
     auto mainLayout = new QVBoxLayout(this);
-    m_bannerLabel = new QLabel(
-        "<b>Note:</b> Empty values will inherit defaults from the application settings.",
-        this);
-    m_bannerLabel->setWordWrap(true);
-    mainLayout->addWidget(m_bannerLabel);
 
     m_tabWidget = new QTabWidget(this);
     mainLayout->addWidget(m_tabWidget);

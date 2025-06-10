@@ -103,6 +103,22 @@ void AppConfig::initializeConfigFolder()
     generateConfigJsonFromSchema();
 }
 
+void AppConfig::setConfigMap(const QVariantMap &map)
+{
+    if (!m_configManager)
+        return;
+    // Assuming ConfigManager has a method to set the entire config object
+    m_configManager->setConfigObject(QJsonObject::fromVariantMap(map));
+    emit configChanged();
+}
+
+QVariantMap AppConfig::getConfigMap() const
+{
+    if (!m_configManager)
+        return QVariantMap();
+    return m_configManager->configObject().toVariantMap();
+}
+
 void AppConfig::copyDefaultResources()
 {
     // Copy schema.json from resource

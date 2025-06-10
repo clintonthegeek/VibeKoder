@@ -27,6 +27,8 @@ private slots:
     void onNewTempSession();
     void onNewProject();
 
+    void onApplicationSettings();
+
     void onCreateSessionFromTemplate();
     void onOpenSelectedSession();
 

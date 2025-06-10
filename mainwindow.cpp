@@ -3,6 +3,7 @@
 #include "sessiontabwidget.h"
 #include "detachedwindow.h"
 #include "appconfig.h"
+#include "applicationsettingsdialog.h"
 #include "project.h"
 
 #include <QMenuBar>
@@ -59,6 +60,11 @@ void MainWindow::setupUi()
     setWindowTitle("VibeKoder");
 
     // === Menu and Toolbar ===
+    QMenu* appMenu = menuBar()->addMenu("Application");
+    QAction* appSettingsAction = new QAction("Settings", this);
+    appMenu->addAction(appSettingsAction);
+    connect(appSettingsAction, &QAction::triggered, this, &MainWindow::onApplicationSettings);
+
     QMenu* projectMenu = menuBar()->addMenu("Project");
 
     QAction* newProjectAction = new QAction("New Project", this);
@@ -156,6 +162,47 @@ void MainWindow::setupUi()
         m_tabWidget->tabBar()->setTabButton(projIndex, QTabBar::RightSide, nullptr);
     }
 }
+
+// helper for merging changed settings with unchanged settings.
+void mergeVariantMaps(QVariantMap &base, const QVariantMap &updates)
+{
+    for (auto it = updates.constBegin(); it != updates.constEnd(); ++it) {
+        const QString &key = it.key();
+        const QVariant &val = it.value();
+
+        if (val.type() == QVariant::Map && base.contains(key) && base.value(key).type() == QVariant::Map) {
+            QVariantMap baseSubMap = base.value(key).toMap();
+            mergeVariantMaps(baseSubMap, val.toMap());
+            base[key] = baseSubMap;
+        } else {
+            base[key] = val;
+        }
+    }
+}
+
+void MainWindow::onApplicationSettings()
+{
+    ApplicationSettingsDialog dlg(this);
+    QVariantMap appConfigMap = AppConfig::instance().getConfigMap();
+    qDebug() << "Loaded app config:" << appConfigMap;
+    dlg.loadSettings(appConfigMap);
+    if (dlg.exec() == QDialog::Accepted) {
+        QVariantMap newSettings = dlg.getSettings();
+
+        // Merge newSettings into appConfigMap recursively
+        mergeVariantMaps(appConfigMap, newSettings);
+
+        // Set entire merged config at once
+        AppConfig::instance().setConfigMap(appConfigMap);
+
+        if (!AppConfig::instance().save()) {
+            QMessageBox::warning(this, "Save Failed", "Failed to save application configuration.");
+        } else {
+            statusBar()->showMessage("Application settings saved.", 3000);
+        }
+    }
+}
+
 
 void MainWindow::onNewTempSession()
 {

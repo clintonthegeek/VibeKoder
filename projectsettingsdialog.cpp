@@ -2,22 +2,26 @@
 #include "projectsettingswidget.h"
 #include <QVBoxLayout>
 #include <QDialogButtonBox>
+#include <qlabel.h>
 
 ProjectSettingsDialog::ProjectSettingsDialog(QWidget *parent)
     : QDialog(parent)
 {
     setWindowTitle("Project Settings");
     resize(600, 400);
-
     auto layout = new QVBoxLayout(this);
+
+    QLabel* bannerLabel = new QLabel(
+        "<b>Note:</b> Empty values will inherit defaults from the application settings.",
+        this);
+    bannerLabel->setWordWrap(true);
+    layout->addWidget(bannerLabel);
 
     m_settingsWidget = new ProjectSettingsWidget(this);
     layout->addWidget(m_settingsWidget);
 
-    // Add standard OK/Cancel buttons
     QDialogButtonBox *buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, this);
     layout->addWidget(buttonBox);
-
     connect(buttonBox, &QDialogButtonBox::accepted, this, &ProjectSettingsDialog::accept);
     connect(buttonBox, &QDialogButtonBox::rejected, this, &ProjectSettingsDialog::reject);
 }

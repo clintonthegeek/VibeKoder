@@ -27,6 +27,9 @@ public:
     QString configFolder() const;
     QString configFilePath() const;
 
+    void setConfigMap(const QVariantMap &map);
+    QVariantMap getConfigMap() const;
+
 signals:
     void configChanged();
 

@@ -36,8 +36,9 @@ public:
     // Validate current config against schema, returns true if valid
     bool validate() const;
 
-    // Access raw config as QJsonObject (read-only)
+    // Access raw config as QJsonObject
     QJsonObject configObject() const { return m_configObject; }
+    void setConfigObject(const QJsonObject &obs);
 
 signals:
     void configChanged();
