@@ -16,7 +16,9 @@ public:
                      AppConfig* appConfig = nullptr);
 
     bool load(const QString &filepath);
-    bool save(const QString &filepath);
+    bool save(const QString &filepath = QString());
+    QString projectFilePath() const { return m_projectFilePath; }
+
 
     // Getters for config fields
     QString rootFolder() const;

@@ -46,13 +46,98 @@ bool Project::load(const QString &filepath)
     return parseJson(data);
 }
 
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonArray>
+#include <QFile>
+#include <QDir>
+#include <QDebug>
+
 bool Project::save(const QString &filepath)
 {
     QString savePath = filepath.isEmpty() ? m_projectFilePath : filepath;
     if (savePath.isEmpty()) {
-        qWarning() << "No project file path specified for saving.";
+        qWarning() << "No file path specified for saving project";
         return false;
     }
+
+    QJsonObject rootObj;
+
+    // API section
+    QJsonObject apiObj;
+    apiObj["access_token"] = m_accessToken;
+    apiObj["model"] = m_model;
+    apiObj["max_tokens"] = m_maxTokens;
+    apiObj["temperature"] = m_temperature;
+    apiObj["top_p"] = m_topP;
+    apiObj["frequency_penalty"] = m_frequencyPenalty;
+    apiObj["presence_penalty"] = m_presencePenalty;
+    rootObj["api"] = apiObj;
+
+    // Folders section
+    QJsonObject foldersObj;
+    // Save folders as relative to root if possible
+    auto relativePath = [&](const QString &absPath) -> QString {
+        if (absPath.isEmpty())
+            return QString();
+        QDir rootDir(m_rootFolder);
+        QString rel = rootDir.relativeFilePath(absPath);
+        return rel;
+    };
+    foldersObj["root"] = m_rootFolder;
+    foldersObj["docs"] = relativePath(m_docsFolder);
+    foldersObj["src"] = relativePath(m_srcFolder);
+    foldersObj["sessions"] = relativePath(m_sessionsFolder);
+    foldersObj["templates"] = relativePath(m_templatesFolder);
+
+    // include_docs as array if multiple, else string if one
+    if (m_includeDocFolders.size() == 1) {
+        foldersObj["include_docs"] = relativePath(m_includeDocFolders.first());
+    } else {
+        QJsonArray inclArr;
+        for (const QString &folder : m_includeDocFolders) {
+            inclArr.append(relativePath(folder));
+        }
+        foldersObj["include_docs"] = inclArr;
+    }
+    rootObj["folders"] = foldersObj;
+
+    // Filetypes section
+    QJsonObject filetypesObj;
+    QJsonArray sourceArr;
+    for (const QString &s : m_sourceFileTypes)
+        sourceArr.append(s);
+    filetypesObj["source"] = sourceArr;
+
+    QJsonArray docsArr;
+    for (const QString &s : m_docFileTypes)
+        docsArr.append(s);
+    filetypesObj["docs"] = docsArr;
+    rootObj["filetypes"] = filetypesObj;
+
+    // Command pipes section
+    QJsonObject cmdPipesObj;
+    for (auto it = m_commandPipes.begin(); it != m_commandPipes.end(); ++it) {
+        QJsonArray cmdsArr;
+        for (const QString &cmd : it.value())
+            cmdsArr.append(cmd);
+        cmdPipesObj[it.key()] = cmdsArr;
+    }
+    rootObj["command_pipes"] = cmdPipesObj;
+
+    // Write JSON to file
+    QJsonDocument doc(rootObj);
+    QFile file(savePath);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        qWarning() << "Failed to open project file for writing:" << savePath;
+        return false;
+    }
+    file.write(doc.toJson(QJsonDocument::Indented));
+    file.close();
+
+    m_projectFilePath = savePath; // update path if saved to new location
+
+    qDebug() << "Project saved to" << savePath;
     return true;
 }
 

@@ -375,8 +375,11 @@ void MainWindow::onProjectSettingsClicked()
         // Update UI to reflect changes
         loadProjectDataToUi();
 
-        // Optionally save project file if you have save implemented
-        // m_project->save(...);
+        if (!m_project->save(m_project->projectFilePath())) {
+            QMessageBox::warning(this, "Save Failed", "Failed to save project file.");
+        } else {
+            statusBar()->showMessage("Project saved successfully.", 3000);
+        }
 
         // Update backend config for open sessions if needed
         updateBackendConfigForAllSessions();
