@@ -5,8 +5,10 @@
 #include <QPlainTextEdit>
 #include <QTreeWidget>
 #include <QPushButton>
+#include <QToolButton>
 #include <QTextEdit>
 #include <QMenu>
+#include <QStatusBar>
 
 #include "project.h"
 #include "session.h"
@@ -19,13 +21,16 @@ class SessionTabWidget : public QWidget
 
 public:
     explicit SessionTabWidget(const QString& sessionPath, Project* project,
-                              QWidget *parent=nullptr, bool isTempSession = false);
+                              QWidget *parent = nullptr, bool isTempSession = false,
+                              QStatusBar* statusBar = nullptr);
     ~SessionTabWidget();
 
     bool saveSession();
     QString sessionFilePath() const;
 
     void updateBackendConfig(const QVariantMap &config);
+
+    bool confirmDiscardUnsavedChanges();
 
 signals:
     void tempSessionSaved(const QString& newFilePath);
@@ -35,11 +40,10 @@ protected:
     void contextMenuEvent(QContextMenuEvent *event) override;
 
 private slots:
-    void onSaveTempSessionClicked();
-
+    void onSaveClicked();
     void onSendClicked();
     void onForkClicked();
-    void onDeleteToEndClicked();
+    void onDeleteAfterClicked();
     void onOpenMarkdownFileClicked();
     void onOpenCacheClicked();
     void onRefreshClicked();
@@ -54,6 +58,9 @@ private:
     void loadSession();
     void buildPromptSliceTree();
     QString promptSliceSummary(const PromptSlice &slice) const;
+    void updateUiForSelectedSlice(int selectedIndex);
+    void updateButtonStates();
+    void markUnsavedChanges(bool changed);
 
     AIBackend *m_aiBackend = nullptr;
     QString m_currentRequestId;
@@ -63,6 +70,7 @@ private:
     Session m_session;
 
     // UI widgets
+    QStatusBar* m_statusBar = nullptr;
     QTreeWidget* m_promptSliceTree = nullptr;
     QPushButton* m_forkButton = nullptr;
     QPushButton* m_openMarkdownButton = nullptr;
@@ -70,7 +78,12 @@ private:
     QTextEdit* m_sliceViewer = nullptr;
     QPlainTextEdit* m_appendUserPrompt = nullptr;
     QPushButton* m_sendButton = nullptr;
+    QPushButton* m_saveButton = nullptr;
+    QPushButton* m_refreshButton = nullptr;
+    QToolButton* m_editToolButton = nullptr;
+    QWidget* m_editSpacer = nullptr;
 
+    QMenu* m_editMenu = nullptr;
     QMenu* m_contextMenu = nullptr;
 
     // Buffer for partial response text (optional)
@@ -81,8 +94,13 @@ private:
     QPushButton* m_saveTempButton = nullptr;
     bool m_isTempSession = false;
 
+    // Track if there are unsaved changes in m_appendUserPrompt
+    bool m_unsavedChanges = false;
 
-
+    //Unsaved entry into text box cached
+    QString m_pendingUserPromptText;
+    // Cached text of last saved user prompt slice for comparison
+    QString m_lastSavedUserPromptText;
 };
 
 #endif // SESSIONTABWIDGET_H

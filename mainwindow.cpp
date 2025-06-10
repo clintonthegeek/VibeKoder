@@ -138,6 +138,14 @@ void MainWindow::setupUi()
             return;
         }
 
+        auto sessionTab = qobject_cast<SessionTabWidget*>(widget);
+        if (sessionTab) {
+            if (!sessionTab->confirmDiscardUnsavedChanges()) {
+                // Cancel close
+                return;
+            }
+        }
+
         // Remove tab by widget pointer for safety
         m_tabWidget->removeTab(widget);
         widget->deleteLater();

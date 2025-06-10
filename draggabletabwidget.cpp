@@ -1,4 +1,5 @@
 #include "draggabletabwidget.h"
+#include "sessiontabwidget.h"
 
 #include <QTabBar>
 #include <QMouseEvent>
@@ -302,6 +303,16 @@ void DraggableTabWidget::onTabCloseRequested(int index)
     if (page == m_projectTab) {
         qDebug() << "[DraggableTabWidget] Close requested on Project tab - ignored";
         return; // Disallow closing Project tab
+    }
+
+    // Check for unsaved changes if this is a SessionTabWidget
+    auto sessionTab = qobject_cast<SessionTabWidget*>(page);
+    if (sessionTab) {
+        if (!sessionTab->confirmDiscardUnsavedChanges()) {
+            // User chose to cancel close
+            qDebug() << "[DraggableTabWidget] Close cancelled due to unsaved changes.";
+            return;
+        }
     }
 
     qDebug() << "[DraggableTabWidget] Close requested for tab widget:" << page;
