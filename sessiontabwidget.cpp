@@ -12,9 +12,20 @@
 #include <QUrl>
 #include <QContextMenuEvent>
 #include <QRandomGenerator>
-#include <QFileDialog>
 #include <QStatusBar>
 #include <QApplication>
+#include <QDialog>
+#include <QLineEdit>
+#include <QCheckBox>
+#include <QDialogButtonBox>
+#include <QFormLayout>
+#include <QFileDialog>
+#include <QDateTime>
+#include <QLabel>
+#include <QGroupBox>
+#include <QVBoxLayout>
+#include <QRegularExpression>  // make sure this is included
+
 
 SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project, QWidget *parent, bool isTempSession, QStatusBar* statusBar)
     : QWidget(parent)
@@ -135,7 +146,17 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
         m_contextMenu->exec(m_promptSliceTree->viewport()->mapToGlobal(pos));
     });
 
+    if (!m_contextMenu) {
+        m_contextMenu = new QMenu(this);
+        QAction* forkAction = m_contextMenu->addAction("Fork Session Here");
+        connect(forkAction, &QAction::triggered, this, &SessionTabWidget::onForkClicked);
+        QAction* deleteAfterAction = m_contextMenu->addAction("Delete All After");
+        connect(deleteAfterAction, &QAction::triggered, this, &SessionTabWidget::onDeleteAfterClicked);
 
+        // Add new action for saving slice as markdown
+        QAction* saveSliceAsMarkdownAction = m_contextMenu->addAction("Save Slice As Markdown");
+        connect(saveSliceAsMarkdownAction, &QAction::triggered, this, &SessionTabWidget::onSaveSliceAsMarkdown);
+    }
 
     // Bottom splitter for slice viewer and append user prompt
     auto bottomSplitter = new QSplitter(Qt::Vertical, mainSplitter);
@@ -244,6 +265,8 @@ SessionTabWidget::~SessionTabWidget()
 //     m_updatingEditor = false;
 // }
 
+
+
 void SessionTabWidget::loadSession()
 {
     if (!m_session.load(m_sessionFilePath)) {
@@ -260,6 +283,179 @@ void SessionTabWidget::loadSession()
             m_promptSliceTree->setCurrentItem(lastItem);
             updateUiForSelectedSlice(lastIndex);
         }
+    }
+}
+
+void SessionTabWidget::onSaveSliceAsMarkdown()
+{
+    auto selectedItems = m_promptSliceTree->selectedItems();
+    if (selectedItems.isEmpty()) {
+        QMessageBox::warning(this, "Save Slice", "No slice selected.");
+        return;
+    }
+    int index = selectedItems.first()->data(0, Qt::UserRole).toInt();
+    if (index < 0 || index >= m_session.slices().size()) {
+        QMessageBox::warning(this, "Save Slice", "Invalid slice selected.");
+        return;
+    }
+    const PromptSlice &slice = m_session.slices().at(index);
+
+    // Prepare default file name: "Session#SliceTIMESTAMP.md"
+    QString timestampSafe = slice.timestamp;
+    timestampSafe.replace(QRegExp("[^0-9]"), ""); // remove non-digits for filename
+    QString baseName = QString("Session%1_Slice%2")
+                           .arg(QFileInfo(m_sessionFilePath).completeBaseName())
+                           .arg(timestampSafe);
+    QString defaultExtension = "md";
+
+    // Default docs folder path
+    QString docsFolder;
+    if (m_project) {
+        docsFolder = m_project->docsFolder();
+        if (!QDir(docsFolder).isAbsolute()) {
+            docsFolder = QDir(m_project->rootFolder()).filePath(docsFolder);
+        }
+    }
+    if (docsFolder.isEmpty())
+        docsFolder = QDir::homePath();
+
+    // Create dialog
+    QDialog dlg(this);
+    dlg.setWindowTitle("Save Slice As Markdown");
+    auto formLayout = new QFormLayout(&dlg);
+
+    // Filename part 1 (name without extension)
+    auto fileNameEdit = new QLineEdit(baseName, &dlg);
+    // Filename part 2 (extension)
+    auto fileExtEdit = new QLineEdit(defaultExtension, &dlg);
+    fileExtEdit->setFixedWidth(50);
+
+    // Container widget for filename parts
+    QWidget *fileNameWidget = new QWidget(&dlg);
+    auto hLayout = new QHBoxLayout(fileNameWidget);
+    hLayout->setContentsMargins(0, 0, 0, 0);
+    hLayout->addWidget(fileNameEdit);
+    QLabel *dotLabel = new QLabel(".", fileNameWidget);
+    dotLabel->setAlignment(Qt::AlignCenter);
+    hLayout->addWidget(dotLabel);
+    hLayout->addWidget(fileExtEdit);
+    formLayout->addRow("File Name:", fileNameWidget);
+
+    // Directory selector with button
+    QWidget *dirWidget = new QWidget(&dlg);
+    auto dirLayout = new QHBoxLayout(dirWidget);
+    dirLayout->setContentsMargins(0, 0, 0, 0);
+    auto dirEdit = new QLineEdit(docsFolder, dirWidget);
+    auto browseBtn = new QPushButton("Browse...", dirWidget);
+    dirLayout->addWidget(dirEdit);
+    dirLayout->addWidget(browseBtn);
+    formLayout->addRow("Directory:", dirWidget);
+    connect(browseBtn, &QPushButton::clicked, this, [dirEdit, this]() {
+        QString dir = QFileDialog::getExistingDirectory(this, "Select Directory", dirEdit->text());
+        if (!dir.isEmpty()) {
+            dirEdit->setText(dir);
+        }
+    });
+
+    // Formatting group box with two checkboxes
+    QGroupBox *formatGroup = new QGroupBox("Formatting", &dlg);
+    auto formatLayout = new QVBoxLayout(formatGroup);
+    auto trimHeaderCheck = new QCheckBox("Trim header above first ---", formatGroup);
+    auto trimFooterCheck = new QCheckBox("Trim footer below last ---", formatGroup);
+    trimHeaderCheck->setChecked(false);
+    trimFooterCheck->setChecked(false);
+    formatLayout->addWidget(trimHeaderCheck);
+    formatLayout->addWidget(trimFooterCheck);
+    formLayout->addRow(formatGroup);
+
+    // Checkbox for open after save
+    auto openCheck = new QCheckBox("Open after saving", &dlg);
+    openCheck->setChecked(true);
+    formLayout->addRow(openCheck);
+
+    // Dialog buttons
+    auto buttonBox = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+    formLayout->addRow(buttonBox);
+    connect(buttonBox, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
+    connect(buttonBox, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
+
+    // Select all text in filename part when dialog opens
+    dlg.open();
+    fileNameEdit->selectAll();
+    fileNameEdit->setFocus();
+
+    if (dlg.exec() != QDialog::Accepted)
+        return;
+
+    QString fileNamePart = fileNameEdit->text().trimmed();
+    QString fileExtPart = fileExtEdit->text().trimmed();
+    QString directory = dirEdit->text().trimmed();
+
+    if (fileNamePart.isEmpty()) {
+        QMessageBox::warning(this, "Save Slice", "File name cannot be empty.");
+        return;
+    }
+    if (fileExtPart.isEmpty()) {
+        QMessageBox::warning(this, "Save Slice", "File extension cannot be empty.");
+        return;
+    }
+    if (directory.isEmpty() || !QDir(directory).exists()) {
+        QMessageBox::warning(this, "Save Slice", "Directory does not exist.");
+        return;
+    }
+
+    QString fullFileName = fileNamePart + "." + fileExtPart;
+    QString fullPath = QDir(directory).filePath(fullFileName);
+
+    QString contentToSave = slice.content;
+
+    // Apply trimming if requested
+    if (trimHeaderCheck->isChecked()) {
+        // Regex to match a line that consists exactly of ---
+        QRegularExpression headerRe("^---\\s*$", QRegularExpression::CaseInsensitiveOption | QRegularExpression::MultilineOption);
+
+        // Remove everything above first line starting with ---
+        int firstHeaderIndex = contentToSave.indexOf(headerRe);
+        if (firstHeaderIndex != -1) {
+            // Move past the line with ---
+            int afterHeaderIndex = contentToSave.indexOf('\n', firstHeaderIndex);
+            if (afterHeaderIndex != -1)
+                contentToSave = contentToSave.mid(afterHeaderIndex + 1);
+            else
+                contentToSave.clear();
+        }
+        // Trim leading empty lines
+        contentToSave = contentToSave.trimmed();
+    }
+
+    if (trimFooterCheck->isChecked()) {
+        QRegularExpression headerRe("^---\\s*$", QRegularExpression::CaseInsensitiveOption | QRegularExpression::MultilineOption);
+
+        // Remove everything below last line starting with ---
+        int lastHeaderIndex = contentToSave.lastIndexOf(headerRe);
+        if (lastHeaderIndex != -1) {
+            contentToSave = contentToSave.left(lastHeaderIndex);
+        }
+        // Trim trailing empty lines
+        contentToSave = contentToSave.trimmed();
+    }
+
+    // Save slice content to file
+    QFile outFile(fullPath);
+    if (!outFile.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Save Slice", QString("Failed to open file for writing:\n%1").arg(fullPath));
+        return;
+    }
+    QTextStream out(&outFile);
+    out << contentToSave;
+    outFile.close();
+
+    if (openCheck->isChecked()) {
+        QDesktopServices::openUrl(QUrl::fromLocalFile(fullPath));
+    }
+
+    if (m_statusBar) {
+        m_statusBar->showMessage(QString("Saved slice to %1").arg(fullPath), 3000);
     }
 }
 

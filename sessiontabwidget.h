@@ -90,6 +90,8 @@ private:
     QString m_partialResponseBuffer;
     bool m_updatingEditor = false;
 
+    void onSaveSliceAsMarkdown();
+
     // New Save button for temp sessions
     QPushButton* m_saveTempButton = nullptr;
     bool m_isTempSession = false;
