@@ -122,7 +122,7 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 
     // === Bottom button row with Send and Save and Edit===
     auto bottomButtonLayout = new QHBoxLayout();
-    m_sendButton = new QPushButton("Send", this);
+    m_sendButton = new QPushButton("Send All Slices", this);
     m_saveButton = new QPushButton("Save", this);
 
     // Edit tool button and space-reserver (initially hidden)
@@ -151,9 +151,9 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     m_editToolButton->setSizePolicy(QSizePolicy::Minimum, QSizePolicy::Preferred);
 
     bottomButtonLayout->addWidget(m_sendButton);
-    bottomButtonLayout->addWidget(m_saveButton);
     bottomButtonLayout->addWidget(m_editSpacer);
     bottomButtonLayout->addWidget(m_editToolButton);
+    bottomButtonLayout->addWidget(m_saveButton);
     mainLayout->addLayout(bottomButtonLayout);
 
     // Connect bottom buttons
