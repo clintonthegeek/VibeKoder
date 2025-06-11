@@ -235,10 +235,37 @@ void MainWindow::onNewTempSession()
         tempFile.close();
     }
 
-    SessionTabWidget* tempTab = new SessionTabWidget(tempFilePath, nullptr, m_tabWidget, true);
+    // Create a temporary Project with app-wide defaults
+    Project* tempProject = new Project(this);
+
+    // Load app-wide config map from AppConfig singleton
+    QVariantMap appConfigMap = AppConfig::instance().getConfigMap();
+
+    // Extract default_project_settings map
+    QVariantMap defaultProjectSettings = appConfigMap.value("default_project_settings").toMap();
+
+    // Apply default_project_settings into tempProject
+    std::function<void(const QVariantMap&, const QString&)> setRec;
+    setRec = [&](const QVariantMap& map, const QString& prefix) {
+        for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
+            QString key = prefix.isEmpty() ? it.key() : prefix + "." + it.key();
+            if (it.value().type() == QVariant::Map) {
+                setRec(it.value().toMap(), key);
+            } else {
+                tempProject->setValue(key, it.value());
+            }
+        }
+    };
+    setRec(defaultProjectSettings, QString());
+
+    // Create the SessionTabWidget with the tempProject and mark it as a temp session
+    SessionTabWidget* tempTab = new SessionTabWidget(tempFilePath, tempProject, m_tabWidget, true);
+
+    // Add tab and select it
     m_tabWidget->addTab(tempTab, "Temp");
     m_tabWidget->setCurrentWidget(tempTab);
 
+    // Connect to update tab text if temp session gets saved to a real file
     connect(tempTab, &SessionTabWidget::tempSessionSaved, this, [this, tempTab](const QString& newFilePath){
         int idx = m_tabWidget->indexOf(tempTab);
         if (idx != -1) {

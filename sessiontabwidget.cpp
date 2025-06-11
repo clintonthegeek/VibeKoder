@@ -1,4 +1,5 @@
 #include "sessiontabwidget.h"
+#include "appconfig.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -31,25 +32,56 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     m_aiBackend = new OpenAIBackend(this);
 
     // Set global config from project or defaults
+    // QVariantMap config;
+    // if (m_project) {
+    //     config["access_token"] = m_project->accessToken();
+    //     config["model"] = m_project->model();
+    //     config["max_tokens"] = m_project->maxTokens();
+    //     config["temperature"] = m_project->temperature();
+    //     config["top_p"] = m_project->topP();
+    //     config["frequency_penalty"] = m_project->frequencyPenalty();
+    //     config["presence_penalty"] = m_project->presencePenalty();
+    // } else {
+    //     config["access_token"] = AppConfig::instance().getValue("default_project_settings.api.access_token").toString();
+    //     config["model"] = QString("gpt-4.1-mini");
+    //     config["max_tokens"] = 20000;
+    //     config["temperature"] = 0.3;
+    //     config["top_p"] = 1.0;
+    //     config["frequency_penalty"] = 0.0;
+    //     config["presence_penalty"] = 0.0;
+    // }
+    // m_aiBackend->setConfig(config);
+
+
+
     QVariantMap config;
-    if (m_project) {
-        config["access_token"] = m_project->accessToken();
-        config["model"] = m_project->model();
-        config["max_tokens"] = m_project->maxTokens();
-        config["temperature"] = m_project->temperature();
-        config["top_p"] = m_project->topP();
-        config["frequency_penalty"] = m_project->frequencyPenalty();
-        config["presence_penalty"] = m_project->presencePenalty();
+
+    if (m_project && m_project->configManager()) {
+        QVariantMap fullConfig = m_project->configManager()->configObject().toVariantMap();
+        if (fullConfig.contains("api") && fullConfig.value("api").canConvert<QVariantMap>()) {
+            config = fullConfig.value("api").toMap();
+        } else {
+            config = fullConfig;
+        }
+        qDebug() << "[SessionTabWidget] Loaded aiBackend config from Project config.";
+
     } else {
-        config["access_token"] = QString();
-        config["model"] = QString("gpt-4.1-mini");
-        config["max_tokens"] = 20000;
-        config["temperature"] = 0.3;
-        config["top_p"] = 1.0;
-        config["frequency_penalty"] = 0.0;
-        config["presence_penalty"] = 0.0;
+        QVariantMap appDefaults = AppConfig::instance().getConfigMap();
+        if (appDefaults.contains("default_project_settings")) {
+            QVariantMap defaultProj = appDefaults.value("default_project_settings").toMap();
+            if (defaultProj.contains("api") && defaultProj.value("api").canConvert<QVariantMap>()) {
+                config = defaultProj.value("api").toMap();
+            } else {
+                config = defaultProj;
+            }
+        }
+        qDebug() << "[SessionTabWidget] No Project found! Loaded aiBackend config from App Defaults";
+
     }
+
     m_aiBackend->setConfig(config);
+
+
 
     // Connect AI backend signals
     connect(m_aiBackend, &AIBackend::partialResponse, this, &SessionTabWidget::onPartialResponse);
