@@ -15,6 +15,7 @@
 #include <QHBoxLayout>
 #include <QLabel>
 #include <QListWidget>
+#include <QTreeWidget>
 #include <QPushButton>
 #include <QFileDialog>
 #include <QFileInfo>
@@ -133,10 +134,13 @@ void MainWindow::setupUi()
 
     projLayout->addSpacing(10);
     projLayout->addWidget(new QLabel("Available Sessions:"));
-    m_sessionList = new QListWidget();
+    m_sessionList = new QTreeWidget();
+    m_sessionList->setColumnCount(4);
+    m_sessionList->setHeaderLabels(QStringList() << "Session #" << "Name" << "Slices" << "Size (KB)");
+    m_sessionList->setRootIsDecorated(false);
+    m_sessionList->setSelectionMode(QAbstractItemView::SingleSelection);
     projLayout->addWidget(m_sessionList);
-    connect(m_sessionList, &QListWidget::itemDoubleClicked, this, &MainWindow::onOpenSelectedSession);
-
+    connect(m_sessionList, &QTreeWidget::itemDoubleClicked, this, &MainWindow::onOpenSelectedSession);
     m_openSessionBtn = new QPushButton("Open Selected Session");
     projLayout->addWidget(m_openSessionBtn);
     connect(m_openSessionBtn, &QPushButton::clicked, this, &MainWindow::onOpenSelectedSession);
@@ -697,7 +701,11 @@ void MainWindow::onProjectSettingsClicked()
 
 void MainWindow::refreshSessionList()
 {
+    if (!m_sessionList)
+        return;
+
     m_sessionList->clear();
+
     if (!m_project)
         return;
 
@@ -715,9 +723,53 @@ void MainWindow::refreshSessionList()
         return;
 
     QStringList filters{"*.md", "*.markdown"};
-    QFileInfoList files = sessionsDir.entryInfoList(filters, QDir::Files, QDir::Time);
-    for (const QFileInfo &fi : files)
-        m_sessionList->addItem(fi.fileName());
+    QFileInfoList files = sessionsDir.entryInfoList(filters, QDir::Files, QDir::Name);
+
+    for (const QFileInfo &fi : files) {
+        QString fileName = fi.fileName();
+        QString baseName = fi.completeBaseName(); // e.g. "001"
+
+        // Trim leading zeros for session number display
+        QString sessionNumber = baseName;
+        sessionNumber.remove(QRegExp("^0+"));
+        if (sessionNumber.isEmpty())
+            sessionNumber = "0";
+
+        // Open file and count slices by parsing delimiters
+        int sliceCount = 0;
+        QFile file(fi.absoluteFilePath());
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&file);
+            QString content = in.readAll();
+            file.close();
+
+            // Count prompt slice delimiters: lines like =={ Role | Timestamp }==
+            QRegularExpression delimiterRe(
+                R"(^==\{\s*(System|User|Assistant)\s*(?:\|\s*[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})?\s*\}==\s*$)",
+                QRegularExpression::MultilineOption | QRegularExpression::CaseInsensitiveOption);
+
+            QRegularExpressionMatchIterator matchIterator = delimiterRe.globalMatch(content);
+            int count = 0;
+            while (matchIterator.hasNext()) {
+                matchIterator.next();
+                ++count;
+            }
+            sliceCount = count;        }
+
+        // File size in KB
+        qint64 sizeBytes = fi.size();
+        double sizeKB = sizeBytes / 1024.0;
+
+        // Create tree widget item
+        QTreeWidgetItem *item = new QTreeWidgetItem(m_sessionList);
+        item->setText(0, sessionNumber);
+        item->setText(1, ""); // Name column empty for now
+        item->setText(2, QString::number(sliceCount));
+        item->setText(3, QString::number(sizeKB, 'f', 2));
+
+        // Store full file path for retrieval on selection
+        item->setData(0, Qt::UserRole, fi.absoluteFilePath());
+    }
 }
 
 void MainWindow::onCreateSessionFromTemplate()
@@ -792,28 +844,22 @@ void MainWindow::onOpenSelectedSession()
         QMessageBox::warning(this, "No Project", "Load a project before opening sessions.");
         return;
     }
-    QListWidgetItem* selItem = m_sessionList->currentItem();
+    QTreeWidgetItem* selItem = m_sessionList->currentItem();
     if (!selItem) {
         QMessageBox::warning(this, "No Session", "Select a session to open.");
         return;
     }
 
-    QString sessionName = selItem->text();
-
-    // Resolve sessions folder path relative to project root
-    auto resolvePath = [&](const QString& folder) -> QString {
-        if (QDir(folder).isAbsolute())
-            return QDir::cleanPath(folder);
-        return QDir(m_project->rootFolder()).filePath(folder);
-    };
-    QString sessionsFolder = resolvePath(m_project->getValue("folders.sessions").toString());
-
-    QString sessionPath = QDir(sessionsFolder).filePath(sessionName);
+    QString sessionPath = selItem->data(0, Qt::UserRole).toString();
+    if (sessionPath.isEmpty()) {
+        QMessageBox::warning(this, "No Session", "Invalid session file path.");
+        return;
+    }
 
     SessionTabWidget* tab = m_tabManager->openSession(sessionPath);
     m_tabWidget->setCurrentWidget(tab);
 
-    statusBar()->showMessage(QString("Opened session %1").arg(sessionName));
+    statusBar()->showMessage(QString("Opened session %1").arg(QFileInfo(sessionPath).fileName()));
 }
 
 

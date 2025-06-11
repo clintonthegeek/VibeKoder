@@ -8,6 +8,7 @@
 class QLabel;
 class QListWidget;
 class QPushButton;
+class QTreeWidget;
 
 #include "project.h"
 #include "sessiontabwidget.h"
@@ -53,7 +54,7 @@ private:
     QWidget* m_projectTab = nullptr;
     QLabel* m_projectInfoLabel = nullptr;
     QListWidget* m_templateList = nullptr;
-    QListWidget* m_sessionList = nullptr;
+    QTreeWidget* m_sessionList = nullptr;
     QPushButton* m_createSessionBtn = nullptr;
     QPushButton* m_openSessionBtn = nullptr;
     QPushButton* m_projectSettingsBtn = nullptr;

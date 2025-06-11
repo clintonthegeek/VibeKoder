@@ -154,7 +154,7 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
         connect(deleteAfterAction, &QAction::triggered, this, &SessionTabWidget::onDeleteAfterClicked);
 
         // Add new action for saving slice as markdown
-        QAction* saveSliceAsMarkdownAction = m_contextMenu->addAction("Save Slice As Markdown");
+        QAction* saveSliceAsMarkdownAction = m_contextMenu->addAction("Export Slice");
         connect(saveSliceAsMarkdownAction, &QAction::triggered, this, &SessionTabWidget::onSaveSliceAsMarkdown);
     }
 
@@ -321,7 +321,7 @@ void SessionTabWidget::onSaveSliceAsMarkdown()
 
     // Create dialog
     QDialog dlg(this);
-    dlg.setWindowTitle("Save Slice As Markdown");
+    dlg.setWindowTitle("Export Slice");
     auto formLayout = new QFormLayout(&dlg);
 
     // Filename part 1 (name without extension)
