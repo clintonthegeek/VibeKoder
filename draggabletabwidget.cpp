@@ -45,6 +45,7 @@ void DraggableTabBar::mousePressEvent(QMouseEvent* event)
     QTabBar::mousePressEvent(event);
 }
 
+
 void DraggableTabBar::mouseMoveEvent(QMouseEvent* event)
 {
     if (!(event->buttons() & Qt::LeftButton) || m_draggedTabIndex < 0) {
@@ -288,6 +289,15 @@ void DraggableTabWidget::onDetachTabRequested(int index, const QPoint& globalPos
             qDebug() << "[DraggableTabWidget] No tabs left after detach, closing window:" << w;
             w->close();
         }
+    }
+}
+
+void DraggableTabWidget::setTabOrientation(Qt::Orientation orientation)
+{
+    if (orientation == Qt::Horizontal) {
+        setTabPosition(QTabWidget::North);
+    } else {
+        setTabPosition(QTabWidget::West); // or East
     }
 }
 

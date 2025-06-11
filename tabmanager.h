@@ -32,6 +32,9 @@ public:
     void ensureProjectTabPresent();
     void setProject(Project* project){m_project = project;}
 
+    QSet<QPointer<DetachedWindow>> detachedWindows() const { return m_detachedWindows; }
+
+
 signals:
     void sessionOpened(const QString& sessionFilePath, SessionTabWidget* tab);
     void sessionClosed(const QString& sessionFilePath);

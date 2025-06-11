@@ -83,6 +83,27 @@ void MainWindow::setupUi()
     toolbar->addAction(openProjectAction);
     toolbar->addAction(newTempSessionAction);
 
+    QMenu* viewMenu = menuBar()->addMenu("View");
+
+    QAction* toggleVerticalTabsAction = new QAction("Vertical Tabs", this);
+    toggleVerticalTabsAction->setCheckable(true);
+    toggleVerticalTabsAction->setChecked(m_verticalTabs);
+    connect(toggleVerticalTabsAction, &QAction::triggered, this, [this, toggleVerticalTabsAction]() {
+        m_verticalTabs = toggleVerticalTabsAction->isChecked();
+        if (m_tabWidget)
+            m_tabWidget->setTabOrientation(m_verticalTabs ? Qt::Vertical : Qt::Horizontal);
+        // Update detached windows similarly if needed
+    });
+    viewMenu->addAction(toggleVerticalTabsAction);
+
+    QAction* toggleToolbarAction = new QAction("Main Toolbar", this);
+    toggleToolbarAction->setCheckable(true);
+    toggleToolbarAction->setChecked(toolbar->isVisible());  // Initialize checked state properly
+    connect(toggleToolbarAction, &QAction::toggled, toolbar, &QToolBar::setVisible);
+    // Keep toolbar visibility changes in sync with the menu action
+    connect(toolbar, &QToolBar::visibilityChanged, toggleToolbarAction, &QAction::setChecked);
+    viewMenu->addAction(toggleToolbarAction);
+
 
     statusBar();
 
@@ -168,6 +189,23 @@ void MainWindow::setupUi()
     int projIndex = m_tabWidget->indexOf(m_projectTab);
     if (projIndex != -1) {
         m_tabWidget->tabBar()->setTabButton(projIndex, QTabBar::RightSide, nullptr);
+    }
+}
+
+void MainWindow::toggleVerticalTabs()
+{
+    m_verticalTabs = !m_verticalTabs;
+    if (m_tabWidget) {
+        m_tabWidget->setTabOrientation(m_verticalTabs ? Qt::Vertical : Qt::Horizontal);
+    }
+    // Update detached windows
+    for (auto dw : m_tabManager->detachedWindows()) {
+        if (!dw)
+            continue;
+        auto tabWidget = dw->findChild<DraggableTabWidget*>();
+        if (tabWidget) {
+            tabWidget->setTabOrientation(m_verticalTabs ? Qt::Vertical : Qt::Horizontal);
+        }
     }
 }
 

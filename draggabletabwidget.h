@@ -34,6 +34,8 @@ public:
         QString whatsThis;
     };
 
+    void setTabOrientation(Qt::Orientation orientation);
+
     QWidget* createNewWindowWidget(const QRect& winRect, const TabInfo& tabInfo);
     void removeTab(QWidget* widget);
 
@@ -57,6 +59,7 @@ class DraggableTabBar : public QTabBar {
     Q_OBJECT
 public:
     explicit DraggableTabBar(QWidget* parent = nullptr);
+
 
 signals:
     void detachTabRequested(int index, const QPoint& globalPos);

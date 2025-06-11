@@ -40,7 +40,8 @@ private:
     void updateBackendConfigForAllSessions();
     void onProjectSettingsClicked();
 
-
+    bool m_verticalTabs = false;
+    void toggleVerticalTabs();
 
     Project* m_project = nullptr;
 
