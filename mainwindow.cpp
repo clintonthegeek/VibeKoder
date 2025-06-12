@@ -27,6 +27,37 @@
 #include <QDebug>
 #include <QStandardPaths>
 
+static QString wrapText(const QString &text, int maxLength = 80)
+{
+    QString result;
+    int start = 0;
+    int len = text.length();
+
+    while (start < len) {
+        int end = start + maxLength;
+        if (end >= len) {
+            result += text.mid(start);
+            break;
+        }
+
+        int breakPos = -1;
+        for (int i = end; i > start; --i) {
+            QChar c = text.at(i);
+            if (c.isSpace() || c == QChar('-')) {
+                breakPos = i;
+                break;
+            }
+        }
+        if (breakPos == -1)
+            breakPos = end;
+
+        result += text.mid(start, breakPos - start + 1).trimmed() + '\n';
+        start = breakPos + 1;
+    }
+
+    return result;
+}
+
 void setProjectSettingsFromMap(Project* project, const QVariantMap& map, const QString& prefix = QString())
 {
     for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
@@ -98,6 +129,7 @@ void MainWindow::setupUi()
     QToolBar* toolbar = addToolBar("Main Toolbar");
     toolbar->addAction(openProjectAction);
     toolbar->addAction(newTempSessionAction);
+    toolbar->hide();
 
     QMenu* viewMenu = menuBar()->addMenu("View");
 
@@ -890,6 +922,7 @@ void MainWindow::refreshSessionList()
         int sliceCount = 0;
         QDateTime lastTimestamp;
         QString title;
+        QString description;
 
         QFile file(fi.absoluteFilePath());
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
@@ -915,6 +948,8 @@ void MainWindow::refreshSessionList()
             QRegularExpressionMatch match = yamlRe.match(content);
             if (match.hasMatch()) {
                 QString yamlBlock = match.captured(1);
+
+                // Parse title
                 QRegularExpression titleRe(R"(^title:\s*(.*)$)", QRegularExpression::MultilineOption);
                 QRegularExpressionMatch titleMatch = titleRe.match(yamlBlock);
                 if (titleMatch.hasMatch()) {
@@ -924,8 +959,18 @@ void MainWindow::refreshSessionList()
                         title = title.mid(1, title.length() - 2);
                     }
                 }
-            }
 
+                // Parse description
+                QRegularExpression descRe(R"(^description:\s*(.*)$)", QRegularExpression::MultilineOption);
+                QRegularExpressionMatch descMatch = descRe.match(yamlBlock);
+                if (descMatch.hasMatch()) {
+                    description = descMatch.captured(1).trimmed();
+                    // Remove quotes if any
+                    if ((description.startsWith('"') && description.endsWith('"')) || (description.startsWith('\'') && description.endsWith('\''))) {
+                        description = description.mid(1, description.length() - 2);
+                    }
+                }
+            }
         }
 
         // File size in KB
@@ -942,6 +987,11 @@ void MainWindow::refreshSessionList()
 
         // Store full file path for retrieval on selection
         item->setData(0, Qt::UserRole, fi.absoluteFilePath());
+
+        // Set tooltip on "Name" column (index 1) with wrapped description if not empty
+        if (!description.isEmpty()) {
+            item->setToolTip(1, wrapText(description));
+        }
 
         sessionItems.append({item, lastTimestamp});
     }

@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include <QMap>
+#include <QToolTip>
 #include "draggabletabwidget.h"
 
 class QLabel;
@@ -70,6 +71,32 @@ private:
     QMap<QString, SessionTabWidget*> m_openSessions;
 
     QMap<QString, SessionTabWidget*> m_pendingSessions;
+};
+
+class InstantTooltipTreeWidget : public QTreeWidget
+{
+public:
+    using QTreeWidget::QTreeWidget;
+
+protected:
+    bool event(QEvent *event) override
+    {
+        if (event->type() == QEvent::ToolTip) {
+            QHelpEvent *helpEvent = static_cast<QHelpEvent *>(event);
+            QTreeWidgetItem *item = itemAt(helpEvent->pos());
+            if (item) {
+                QString tooltip = item->toolTip(1); // Tooltip on "Name" column
+                if (!tooltip.isEmpty()) {
+                    QToolTip::showText(helpEvent->globalPos(), tooltip, this);
+                    return true;
+                }
+            }
+            QToolTip::hideText();
+            event->ignore();
+            return true;
+        }
+        return QTreeWidget::event(event);
+    }
 };
 
 #endif // MAINWINDOW_H
