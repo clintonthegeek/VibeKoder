@@ -618,6 +618,30 @@ void SessionTabWidget::updateUiForSelectedSlice(int selectedIndex)
         m_pendingUserPromptText = m_appendUserPrompt->toPlainText();
     }
 
+    if (lastIndex == 0) {
+        const PromptSlice &onlySlice = slices.first();
+        if (onlySlice.role == MessageRole::System) {
+            // Show system prompt in slice viewer
+            m_updatingEditor = true;
+
+            m_sliceViewer->show();
+            m_sliceViewer->setEnabled(true);
+            m_sliceViewer->setPlainText(onlySlice.content);
+
+            m_appendUserPrompt->show();
+            m_appendUserPrompt->setEnabled(true);
+
+            m_sendButton->setEnabled(false);
+            m_saveButton->setEnabled(false);
+
+            m_editToolButton->setVisible(false);
+            m_editSpacer->setVisible(true);
+
+            m_updatingEditor = false;
+            return;
+        }
+    }
+
     if (selectedIndex == lastIndex) {
         // Last slice selected
         if (lastSlice.role == MessageRole::User) {

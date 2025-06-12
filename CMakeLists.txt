@@ -48,6 +48,7 @@ set(PROJECT_SOURCES
     src/descriptiongenerator.h
     src/applicationsettingsdialog.cpp
     src/applicationsettingsdialog.h
+    src/files.qrc
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
