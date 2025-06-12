@@ -9,6 +9,8 @@
 #include <QTextEdit>
 #include <QMenu>
 #include <QStatusBar>
+#include <QLineEdit>
+#include <QLabel>
 
 #include "project.h"
 #include "session.h"
@@ -32,6 +34,8 @@ public:
 
     bool confirmDiscardUnsavedChanges();
 
+    Session& session() { return m_session; }
+    AIBackend* aiBackend() const { return m_aiBackend; }
 signals:
     void tempSessionSaved(const QString& newFilePath);
 
@@ -61,6 +65,8 @@ private:
     void updateUiForSelectedSlice(int selectedIndex);
     void updateButtonStates();
     void markUnsavedChanges(bool changed);
+    void onEditTitleDescClicked();
+
 
     AIBackend *m_aiBackend = nullptr;
     QString m_currentRequestId;
@@ -80,6 +86,7 @@ private:
     QPushButton* m_sendButton = nullptr;
     QPushButton* m_saveButton = nullptr;
     QPushButton* m_refreshButton = nullptr;
+    QPushButton* m_editTitleDescBtn = nullptr;
     QToolButton* m_editToolButton = nullptr;
     QWidget* m_editSpacer = nullptr;
 
@@ -103,6 +110,15 @@ private:
     QString m_pendingUserPromptText;
     // Cached text of last saved user prompt slice for comparison
     QString m_lastSavedUserPromptText;
+
+    QLineEdit* m_titleEdit = nullptr;
+    QTextEdit* m_descriptionEdit = nullptr;
+    QPushButton* m_generateTitleDescBtn = nullptr;
+    QLabel* m_sessionTitleLabel = nullptr;
+
+    void setupHeaderEditorUi();
+    void loadHeaderMetadataToUi();
+    void saveHeaderMetadataFromUi();
 };
 
 #endif // SESSIONTABWIDGET_H

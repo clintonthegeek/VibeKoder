@@ -41,6 +41,9 @@ private:
     void updateBackendConfigForAllSessions();
     void onProjectSettingsClicked();
 
+    void onDescribeSelectedSession();
+    void onDeleteSelectedSession();
+
     bool m_verticalTabs = false;
     void toggleVerticalTabs();
 
@@ -58,7 +61,8 @@ private:
     QPushButton* m_createSessionBtn = nullptr;
     QPushButton* m_openSessionBtn = nullptr;
     QPushButton* m_projectSettingsBtn = nullptr;
-
+    QPushButton* m_deleteSessionBtn = nullptr;
+    QPushButton* m_describeSessionBtn = nullptr;
 
     TabManager* m_tabManager = nullptr;
 

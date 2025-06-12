@@ -542,6 +542,36 @@ QVector<PromptSlice> Session::expandedSlices() const
     return expanded;
 }
 
+QVariantMap Session::headerMetadata() const
+{
+    return m_metadata;
+}
+
+void Session::setHeaderMetadata(const QVariantMap &metadata)
+{
+    m_metadata = metadata;
+}
+
+QString Session::headerTitle() const
+{
+    return m_metadata.value("title").toString();
+}
+
+void Session::setHeaderTitle(const QString &title)
+{
+    m_metadata["title"] = title;
+}
+
+QString Session::headerDescription() const
+{
+    return m_metadata.value("description").toString();
+}
+
+void Session::setHeaderDescription(const QString &description)
+{
+    m_metadata["description"] = description;
+}
+
 QString Session::expandIncludesOnce(const QString &content) const
 {
     static const QRegularExpression cachedMarkerRe(R"(<!--\s*cached:\s*(.*?)\s*-->)", QRegularExpression::CaseInsensitiveOption);

@@ -1,10 +1,13 @@
 #include "mainwindow.h"
+#include "descriptiongenerator.h"
 #include "projectsettingsdialog.h"
 #include "sessiontabwidget.h"
 #include "detachedwindow.h"
 #include "appconfig.h"
 #include "applicationsettingsdialog.h"
 #include "project.h"
+#include "openaibackend.h"
+#include "session.h"
 
 #include <QMenuBar>
 #include <QMenu>
@@ -39,6 +42,7 @@ void setProjectSettingsFromMap(Project* project, const QVariantMap& map, const Q
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    this->resize(700, 1200);
     setupUi();
     tryAutoLoadProject();
     m_tabManager = new TabManager(m_tabWidget, m_projectTab, m_project, this);
@@ -54,6 +58,17 @@ MainWindow::~MainWindow()
     // }
     // m_openSessions.clear();
     delete m_project;
+}
+
+AIBackend* createBackendForProject(Project* project, QObject* parent = nullptr)
+{
+    OpenAIBackend* backend = new OpenAIBackend(parent);
+    if (project && project->configManager()) {
+        QVariantMap fullConfig = project->configManager()->configObject().toVariantMap();
+        QVariantMap apiConfig = fullConfig.value("api").toMap();
+        backend->setConfig(apiConfig);
+    }
+    return backend;
 }
 
 void MainWindow::setupUi()
@@ -124,6 +139,11 @@ void MainWindow::setupUi()
     m_projectInfoLabel->setWordWrap(true);
     projLayout->addWidget(m_projectInfoLabel);
 
+    m_projectSettingsBtn = new QPushButton("Project Settings", m_projectTab);
+    m_projectSettingsBtn->setEnabled(false); // Disabled until a project is loaded
+    projLayout->addWidget(m_projectSettingsBtn);
+    connect(m_projectSettingsBtn, &QPushButton::clicked, this, &MainWindow::onProjectSettingsClicked);
+
     projLayout->addWidget(new QLabel("Templates:"));
     m_templateList = new QListWidget();
     projLayout->addWidget(m_templateList);
@@ -136,19 +156,37 @@ void MainWindow::setupUi()
     projLayout->addWidget(new QLabel("Available Sessions:"));
     m_sessionList = new QTreeWidget();
     m_sessionList->setColumnCount(4);
-    m_sessionList->setHeaderLabels(QStringList() << "Session #" << "Name" << "Slices" << "Size (KB)");
+    m_sessionList->setHeaderLabels(QStringList() << "#" << "Name" << "Slices" << "Size (KB)");
     m_sessionList->setRootIsDecorated(false);
     m_sessionList->setSelectionMode(QAbstractItemView::SingleSelection);
     projLayout->addWidget(m_sessionList);
     connect(m_sessionList, &QTreeWidget::itemDoubleClicked, this, &MainWindow::onOpenSelectedSession);
-    m_openSessionBtn = new QPushButton("Open Selected Session");
-    projLayout->addWidget(m_openSessionBtn);
+    m_openSessionBtn = new QPushButton("Open Session");
     connect(m_openSessionBtn, &QPushButton::clicked, this, &MainWindow::onOpenSelectedSession);
 
-    m_projectSettingsBtn = new QPushButton("Project Settings", m_projectTab);
-    m_projectSettingsBtn->setEnabled(false); // Disabled until a project is loaded
-    projLayout->addWidget(m_projectSettingsBtn);
-    connect(m_projectSettingsBtn, &QPushButton::clicked, this, &MainWindow::onProjectSettingsClicked);
+    QHBoxLayout* sessionButtonsLayout = new QHBoxLayout();
+    sessionButtonsLayout->addWidget(m_openSessionBtn);
+    m_openSessionBtn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
+
+    m_describeSessionBtn = new QPushButton("Describe", m_projectTab);
+    sessionButtonsLayout->addWidget(m_describeSessionBtn);
+
+    sessionButtonsLayout->addStretch();
+
+    m_deleteSessionBtn = new QPushButton("Delete", m_projectTab);
+    sessionButtonsLayout->addWidget(m_deleteSessionBtn);
+
+    projLayout->addLayout(sessionButtonsLayout);
+
+    // Connect delete button
+    connect(m_deleteSessionBtn, &QPushButton::clicked, this, &MainWindow::onDeleteSelectedSession);
+
+    // Connect describe button
+    connect(m_describeSessionBtn, &QPushButton::clicked, this, &MainWindow::onDescribeSelectedSession);
+
+
+
+
 
     m_tabWidget->addTab(m_projectTab, "Project");
 
@@ -253,6 +291,117 @@ void MainWindow::onApplicationSettings()
     }
 }
 
+void MainWindow::onDeleteSelectedSession()
+{
+    if (!m_project) {
+        QMessageBox::warning(this, "No Project", "Load a project before deleting sessions.");
+        return;
+    }
+
+    QTreeWidgetItem* selItem = m_sessionList->currentItem();
+    if (!selItem) {
+        QMessageBox::warning(this, "No Selection", "Select a session to delete.");
+        return;
+    }
+
+    QString sessionPath = selItem->data(0, Qt::UserRole).toString();
+    if (sessionPath.isEmpty()) {
+        QMessageBox::warning(this, "Invalid Selection", "Selected session path is invalid.");
+        return;
+    }
+
+    // Confirm deletion
+    QMessageBox::StandardButton reply = QMessageBox::question(
+        this, "Delete Session",
+        QString("Are you sure you want to delete session '%1'? This cannot be undone.").arg(QFileInfo(sessionPath).fileName()),
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No);
+
+    if (reply != QMessageBox::Yes)
+        return;
+
+    // Close session tab if open
+    if (m_tabManager) {
+        m_tabManager->closeSession(sessionPath);
+    }
+
+    // Delete session file
+    if (!QFile::remove(sessionPath)) {
+        QMessageBox::warning(this, "Delete Failed", "Failed to delete session file.");
+        return;
+    }
+
+    // Delete session cache folder if exists
+    QFileInfo fi(sessionPath);
+    QString cacheFolder = QDir(fi.absolutePath()).filePath(fi.completeBaseName());
+    QDir cacheDir(cacheFolder);
+    if (cacheDir.exists()) {
+        cacheDir.removeRecursively();
+    }
+
+    refreshSessionList();
+    statusBar()->showMessage("Session deleted.", 3000);
+}
+
+void MainWindow::onDescribeSelectedSession()
+{
+    if (!m_project) {
+        QMessageBox::warning(this, "No Project", "Load a project before describing sessions.");
+        return;
+    }
+    QTreeWidgetItem* selItem = m_sessionList->currentItem();
+    if (!selItem) {
+        QMessageBox::warning(this, "No Selection", "Select a session to describe.");
+        return;
+    }
+    QString sessionPath = selItem->data(0, Qt::UserRole).toString();
+    if (sessionPath.isEmpty()) {
+        QMessageBox::warning(this, "Invalid Selection", "Selected session path is invalid.");
+        return;
+    }
+
+    // Load session from file (no UI)
+    Session* session = new Session(m_project, this);
+    if (!session->load(sessionPath)) {
+        QMessageBox::warning(this, "Error", "Failed to load session file.");
+        delete session;
+        return;
+    }
+
+    // Create AI backend configured for current project
+    AIBackend* backend = createBackendForProject(m_project, this);
+
+    // Create DescriptionGenerator with session and backend
+    DescriptionGenerator* gen = new DescriptionGenerator(session, backend, this);
+
+    // Connect signals to handle completion and errors
+connect(gen, &DescriptionGenerator::generationFinished, this, [this, session, sessionPath, gen](const QString& title, const QString&){        // Save updated session metadata
+        if (!session->save(sessionPath)) {
+            QMessageBox::warning(this, "Save Failed", "Failed to save session after updating description.");
+        }
+        refreshSessionList();
+        // Select updated session in list
+        for (int i = 0; i < m_sessionList->topLevelItemCount(); ++i) {
+            QTreeWidgetItem* item = m_sessionList->topLevelItem(i);
+            if (item && item->data(0, Qt::UserRole).toString() == sessionPath) {
+                m_sessionList->setCurrentItem(item);
+                break;
+            }
+        }
+        statusBar()->showMessage("Session description updated.", 3000);
+        // Clean up
+        gen->deleteLater();
+        session->deleteLater();
+    });
+    connect(gen, &DescriptionGenerator::generationError, this, [this, gen, session](const QString& error){
+        QMessageBox::warning(this, "Description Generation Error", error);
+        gen->deleteLater();
+        session->deleteLater();
+    });
+
+    // Start generation invisibly
+    gen->generateTitleAndDescription();
+}
 
 void MainWindow::onNewTempSession()
 {
@@ -647,15 +796,6 @@ void MainWindow::loadProjectDataToUi()
     // Display project folder info (simple HTML)
     QString html;
     html += "<b>Project Root:</b> " + rootFolder + "<br>";
-    html += "<b>Docs Folder:</b> " + docsFolder + "<br>";
-    html += "<b>Source Folder:</b> " + srcFolder + "<br>";
-    html += "<b>Sessions Folder:</b> " + sessionsFolder + "<br>";
-    html += "<b>Templates Folder:</b> " + templatesFolder + "<br>";
-    html += "<b>Include Doc Folders:</b><ul>";
-    for (const QString &incFolder : includeDocFolders) {
-        QString absIncFolder = resolvePath(incFolder);
-        html += "<li>" + absIncFolder + "</li>";
-    }
     html += "</ul>";
 
     m_projectInfoLabel->setText(html);
@@ -725,6 +865,17 @@ void MainWindow::refreshSessionList()
     QStringList filters{"*.md", "*.markdown"};
     QFileInfoList files = sessionsDir.entryInfoList(filters, QDir::Files, QDir::Name);
 
+    struct SessionInfo {
+        QTreeWidgetItem* item;
+        QDateTime lastSliceTimestamp;
+    };
+
+    QList<SessionInfo> sessionItems;
+
+    QRegularExpression delimiterRe(
+        R"(^==\{\s*(System|User|Assistant)\s*(?:\|\s*([0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}))?\s*\}==\s*$)",
+        QRegularExpression::MultilineOption | QRegularExpression::CaseInsensitiveOption);
+
     for (const QFileInfo &fi : files) {
         QString fileName = fi.fileName();
         QString baseName = fi.completeBaseName(); // e.g. "001"
@@ -735,40 +886,84 @@ void MainWindow::refreshSessionList()
         if (sessionNumber.isEmpty())
             sessionNumber = "0";
 
-        // Open file and count slices by parsing delimiters
+        // Open file and parse slices and last timestamp
         int sliceCount = 0;
+        QDateTime lastTimestamp;
+        QString title;
+
         QFile file(fi.absoluteFilePath());
         if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
             QTextStream in(&file);
             QString content = in.readAll();
             file.close();
 
-            // Count prompt slice delimiters: lines like =={ Role | Timestamp }==
-            QRegularExpression delimiterRe(
-                R"(^==\{\s*(System|User|Assistant)\s*(?:\|\s*[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2})?\s*\}==\s*$)",
-                QRegularExpression::MultilineOption | QRegularExpression::CaseInsensitiveOption);
+            QRegularExpressionMatchIterator it = delimiterRe.globalMatch(content);
+            while (it.hasNext()) {
+                QRegularExpressionMatch match = it.next();
+                ++sliceCount;
 
-            QRegularExpressionMatchIterator matchIterator = delimiterRe.globalMatch(content);
-            int count = 0;
-            while (matchIterator.hasNext()) {
-                matchIterator.next();
-                ++count;
+                QString tsStr = match.captured(2);
+                if (!tsStr.isEmpty()) {
+                    QDateTime ts = QDateTime::fromString(tsStr, "yyyy-MM-dd HH:mm:ss");
+                    if (ts.isValid() && (lastTimestamp.isNull() || ts > lastTimestamp)) {
+                        lastTimestamp = ts;
+                    }
+                }
             }
-            sliceCount = count;        }
+
+            QRegularExpression yamlRe(R"(^---\s*\n(.*?)\n---\s*\n)", QRegularExpression::DotMatchesEverythingOption);
+            QRegularExpressionMatch match = yamlRe.match(content);
+            if (match.hasMatch()) {
+                QString yamlBlock = match.captured(1);
+                QRegularExpression titleRe(R"(^title:\s*(.*)$)", QRegularExpression::MultilineOption);
+                QRegularExpressionMatch titleMatch = titleRe.match(yamlBlock);
+                if (titleMatch.hasMatch()) {
+                    title = titleMatch.captured(1).trimmed();
+                    // Remove quotes if any
+                    if ((title.startsWith('"') && title.endsWith('"')) || (title.startsWith('\'') && title.endsWith('\''))) {
+                        title = title.mid(1, title.length() - 2);
+                    }
+                }
+            }
+
+        }
 
         // File size in KB
         qint64 sizeBytes = fi.size();
         double sizeKB = sizeBytes / 1024.0;
 
         // Create tree widget item
-        QTreeWidgetItem *item = new QTreeWidgetItem(m_sessionList);
+        QTreeWidgetItem *item = new QTreeWidgetItem();
         item->setText(0, sessionNumber);
-        item->setText(1, ""); // Name column empty for now
+        item->setText(1, title); // Name column empty for now
         item->setText(2, QString::number(sliceCount));
         item->setText(3, QString::number(sizeKB, 'f', 2));
+        item->setText(4, lastTimestamp.isNull() ? "" : lastTimestamp.toString("yyyy-MM-dd HH:mm:ss"));
 
         // Store full file path for retrieval on selection
         item->setData(0, Qt::UserRole, fi.absoluteFilePath());
+
+        sessionItems.append({item, lastTimestamp});
+    }
+
+    // Sort by last slice timestamp descending (most recent first)
+    std::sort(sessionItems.begin(), sessionItems.end(), [](const SessionInfo &a, const SessionInfo &b) {
+        return a.lastSliceTimestamp > b.lastSliceTimestamp;
+    });
+
+    // Set column count to 5 for new column
+    m_sessionList->setColumnCount(5);
+    m_sessionList->setHeaderLabels(QStringList() << "#" << "Name" << "Slices" << "Size (KB)" << "Last Modified");
+    m_sessionList->setRootIsDecorated(false);
+
+    // Add items to tree widget
+    for (const SessionInfo &info : sessionItems) {
+        m_sessionList->addTopLevelItem(info.item);
+    }
+
+    // Resize columns to contents
+    for (int col = 0; col < m_sessionList->columnCount(); ++col) {
+        m_sessionList->resizeColumnToContents(col);
     }
 }
 

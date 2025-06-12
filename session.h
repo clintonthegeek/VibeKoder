@@ -67,7 +67,18 @@ public:
     QString compiledRawMarkdown() const;
     QVector<PromptSlice> expandedSlices() const;
 
+    // Get YAML metadata map (already have m_metadata internally)
+    QVariantMap headerMetadata() const;
 
+    // Set YAML metadata map
+    void setHeaderMetadata(const QVariantMap &metadata);
+
+    // Convenience getters/setters for title and description
+    QString headerTitle() const;
+    void setHeaderTitle(const QString &title);
+
+    QString headerDescription() const;
+    void setHeaderDescription(const QString &description);
 private:
     QString m_filepath;
     Project* m_project; // used for base folder path to resolve includes

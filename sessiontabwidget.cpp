@@ -1,5 +1,6 @@
 #include "sessiontabwidget.h"
 #include "appconfig.h"
+#include "descriptiongenerator.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -25,7 +26,11 @@
 #include <QGroupBox>
 #include <QVBoxLayout>
 #include <QRegularExpression>  // make sure this is included
-
+#include <QEventLoop>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QJsonParseError>
+#include <QToolTip>
 
 SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project, QWidget *parent, bool isTempSession, QStatusBar* statusBar)
     : QWidget(parent)
@@ -41,29 +46,6 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 
     // Create OpenAIBackend instance
     m_aiBackend = new OpenAIBackend(this);
-
-    // Set global config from project or defaults
-    // QVariantMap config;
-    // if (m_project) {
-    //     config["access_token"] = m_project->accessToken();
-    //     config["model"] = m_project->model();
-    //     config["max_tokens"] = m_project->maxTokens();
-    //     config["temperature"] = m_project->temperature();
-    //     config["top_p"] = m_project->topP();
-    //     config["frequency_penalty"] = m_project->frequencyPenalty();
-    //     config["presence_penalty"] = m_project->presencePenalty();
-    // } else {
-    //     config["access_token"] = AppConfig::instance().getValue("default_project_settings.api.access_token").toString();
-    //     config["model"] = QString("gpt-4.1-mini");
-    //     config["max_tokens"] = 20000;
-    //     config["temperature"] = 0.3;
-    //     config["top_p"] = 1.0;
-    //     config["frequency_penalty"] = 0.0;
-    //     config["presence_penalty"] = 0.0;
-    // }
-    // m_aiBackend->setConfig(config);
-
-
 
     QVariantMap config;
 
@@ -92,27 +74,41 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 
     m_aiBackend->setConfig(config);
 
-
-
     // Connect AI backend signals
     connect(m_aiBackend, &AIBackend::partialResponse, this, &SessionTabWidget::onPartialResponse);
     connect(m_aiBackend, &AIBackend::finished, this, &SessionTabWidget::onFinished);
     connect(m_aiBackend, &AIBackend::errorOccurred, this, &SessionTabWidget::onErrorOccurred);
     connect(m_aiBackend, &AIBackend::statusChanged, this, &SessionTabWidget::onStatusChanged);
 
-
     // === UI setup ===
     // === New top button row above slice tree ===
     auto mainLayout = new QVBoxLayout(this);
 
+    m_sessionTitleLabel = new QLabel(this);
+    m_sessionTitleLabel->setTextFormat(Qt::RichText);
+    m_sessionTitleLabel->setWordWrap(true);
+    m_sessionTitleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    m_sessionTitleLabel->setStyleSheet("font-weight: bold; font-size: 16px; margin-bottom: 8px;");
+
+    if (mainLayout) {
+        mainLayout->insertWidget(0, m_sessionTitleLabel);
+    }
 
     auto topButtonLayout = new QHBoxLayout();
     m_openMarkdownButton = new QPushButton("Open Markdown File", this);
     m_openCacheButton = new QPushButton("Open Cache", this);
     m_refreshButton = new QPushButton("Refresh", this);
+    // In SessionTabWidget constructor or UI setup
+    m_editTitleDescBtn = new QPushButton("Description", this);
+    topButtonLayout->addWidget(m_editTitleDescBtn);
+    connect(m_editTitleDescBtn, &QPushButton::clicked, this, &SessionTabWidget::onEditTitleDescClicked);
+    m_editTitleDescBtn->installEventFilter(this);
+
 
     topButtonLayout->addWidget(m_openMarkdownButton);
     topButtonLayout->addWidget(m_openCacheButton);
+    topButtonLayout->addWidget(m_editTitleDescBtn);
+
     topButtonLayout->addStretch(); // Push buttons to the left
     topButtonLayout->addWidget(m_refreshButton);
 
@@ -236,35 +232,82 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     loadSession();
 }
 
+//for description tooltip
+QString wrapText(const QString &text, int maxLength = 80)
+{
+    QString result;
+    int start = 0;
+    int len = text.length();
+
+    while (start < len) {
+        // Determine the end index for this segment
+        int end = start + maxLength;
+        if (end >= len) {
+            // Remaining text fits within maxLength
+            result += text.mid(start);
+            break;
+        }
+
+        // Look backward from 'end' to find a space or hyphen to break at
+        int breakPos = -1;
+        for (int i = end; i > start; --i) {
+            QChar c = text.at(i);
+            if (c.isSpace() || c == QChar('-')) {
+                breakPos = i;
+                break;
+            }
+        }
+
+        if (breakPos == -1) {
+            // No suitable break found, break at maxLength anyway
+            breakPos = end;
+        }
+
+        // Append the substring and a newline
+        result += text.mid(start, breakPos - start + 1).trimmed() + '\n';
+
+        // Move start index past the break position
+        start = breakPos + 1;
+    }
+
+    return result;
+}
+
+void SessionTabWidget::loadHeaderMetadataToUi()
+{
+    if (!m_project)
+        return;
+
+    QVariantMap header = m_session.headerMetadata();
+    m_titleEdit->setText(header.value("title").toString());
+    m_descriptionEdit->setPlainText(header.value("description").toString());
+}
+
+void SessionTabWidget::saveHeaderMetadataFromUi()
+{
+    QVariantMap header = m_session.headerMetadata();
+    header["title"] = m_titleEdit->text().trimmed();
+    header["description"] = m_descriptionEdit->toPlainText().trimmed();
+    m_session.setHeaderMetadata(header);
+
+    // Update session title label and description tooltip
+    QString title = header.value("title").toString();
+    if (title.isEmpty())
+        title = "(Untitled Session)";
+    if (m_sessionTitleLabel)
+        m_sessionTitleLabel->setText(title);
+
+    QString description = header.value("description").toString();
+    if (description.isEmpty())
+        description = "(No description)";
+    if (m_editTitleDescBtn)
+        m_editTitleDescBtn->setToolTip(wrapText(description));
+}
+
 SessionTabWidget::~SessionTabWidget()
 {
     qDebug() << "[SessionTabWidget] Destructor for session:" << m_sessionFilePath << "Widget:" << this;
 }
-
-// void SessionTabWidget::loadSession()
-// {
-//     if (!m_session.load(m_sessionFilePath)) {
-//         QMessageBox::warning(this, "Error", "Failed to load session file.");
-//         return;
-//     }
-
-//     buildPromptSliceTree();
-
-//     // Reset unsaved changes tracking
-//     m_unsavedChanges = false;
-//     m_saveButton->setEnabled(false);
-//     m_sendButton->setEnabled(false);
-//     m_partialResponseBuffer.clear();
-
-//     // Clear editors
-//     m_updatingEditor = true;
-//     m_sliceViewer->clear();
-//     m_sliceViewer->setEnabled(false);
-//     m_appendUserPrompt->clear();
-//     m_appendUserPrompt->setEnabled(false);
-//     m_updatingEditor = false;
-// }
-
 
 
 void SessionTabWidget::loadSession()
@@ -274,6 +317,20 @@ void SessionTabWidget::loadSession()
         return;
     }
     buildPromptSliceTree();
+
+    // Update session title label text from session metadata
+    QString title = m_session.headerTitle();
+    if (title.isEmpty())
+        title = "(Untitled Session)";
+    m_sessionTitleLabel->setText(title);
+
+    // Update description button tooltip as well
+    QString description = m_session.headerDescription();
+    if (description.isEmpty())
+        description = "(No description)";
+    if (m_editTitleDescBtn) {
+        m_editTitleDescBtn->setToolTip(wrapText(description));
+    }
 
     // Explicitly select last slice and update UI
     int lastIndex = m_session.slices().size() - 1;
@@ -710,6 +767,8 @@ bool SessionTabWidget::confirmDiscardUnsavedChanges()
 
 void SessionTabWidget::onSaveClicked()
 {
+    saveHeaderMetadataFromUi();
+
     QString currentText = m_appendUserPrompt->toPlainText().trimmed();
 
     auto &slices = m_session.slices();
@@ -944,6 +1003,29 @@ void SessionTabWidget::onFinished(const QString &requestId, const QString &fullR
     m_unsavedChanges = false;
 }
 
+void SessionTabWidget::onEditTitleDescClicked()
+{
+    if (!m_sessionFilePath.isEmpty()) {
+        DescriptionGenerator* gen = new DescriptionGenerator(&m_session, m_aiBackend, this);
+
+        // Show dialog UI for interactive editing
+        gen->showDialog();
+
+        // Update UI after dialog closes
+        QString title = m_session.headerTitle();
+        if (title.isEmpty())
+            title = "(Untitled Session)";
+        if (m_sessionTitleLabel)
+            m_sessionTitleLabel->setText(title);
+
+        QString description = m_session.headerDescription();
+        if (description.isEmpty())
+            description = "(No description)";
+        if (m_editTitleDescBtn)
+            m_editTitleDescBtn->setToolTip(description);
+    }
+}
+
 void SessionTabWidget::onErrorOccurred(const QString &requestId, const QString &errorString)
 {
     qWarning() << "[onErrorOccurred] Error for requestId:" << requestId << "Error:" << errorString;
@@ -1001,6 +1083,14 @@ bool SessionTabWidget::eventFilter(QObject *obj, QEvent *event)
             if (m_sendButton->isEnabled()) {
                 onSendClicked();
                 return true; // event handled
+            }
+        }
+    }
+    if (obj == m_editTitleDescBtn) {
+        if (event->type() == QEvent::Enter) {
+            if (m_editTitleDescBtn) {
+                QPoint globalPos = m_editTitleDescBtn->mapToGlobal(m_editTitleDescBtn->rect().bottomLeft());
+                QToolTip::showText(globalPos, m_editTitleDescBtn->toolTip(), m_editTitleDescBtn);
             }
         }
     }

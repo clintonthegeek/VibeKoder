@@ -56,6 +56,8 @@ else()
             files.qrc
             projectsettingswidget.h projectsettingswidget.cpp
             applicationsettingsdialog.h applicationsettingsdialog.cpp
+            descriptiongenerator.h descriptiongenerator.cpp
+            #sourcefileselectiondialog.h sourcefileselectiondialog.cpp
         )
     endif()
 endif()
