@@ -779,7 +779,7 @@ bool Session::parseSessionFile(const QString &data)
         while (!currentContentLines.isEmpty() && currentContentLines.last().trimmed().isEmpty())
             currentContentLines.removeLast();
 
-        QString content = currentContentLines.join("\n").trimmed();
+        QString content = currentContentLines.join("\n");//.trimmed(); could be squishing my files together.
 
         if (currentTimestamp.isEmpty()) {
             currentTimestamp = QDateTime::currentDateTime().toString("yyyy-MM-dd HH:mm:ss");

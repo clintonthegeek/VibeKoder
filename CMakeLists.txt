@@ -12,10 +12,42 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network)
 
+add_subdirectory(qmarkdowntextedit)
+
 set(PROJECT_SOURCES
-        main.cpp
-        mainwindow.cpp
-        mainwindow.h
+    src/main.cpp
+    src/mainwindow.cpp
+    src/mainwindow.h
+    src/project.cpp
+    src/project.h
+    src/session.cpp
+    src/session.h
+    src/sessiontabwidget.cpp
+    src/sessiontabwidget.h
+    src/commandpipemanager.cpp
+    src/commandpipemanager.h
+    src/configmanager.cpp
+    src/configmanager.cpp
+    src/draggabletabwidget.cpp
+    src/draggabletabwidget.h
+    src/detachedwindow.cpp
+    src/detachedwindow.h
+    src/aibackend.cpp
+    src/aibackend.h
+    src/openaibackend.cpp
+    src/openaibackend.h
+    src/tabmanager.cpp
+    src/tabmanager.h
+    src/appconfig.cpp
+    src/appconfig.h
+    src/projectsettingsdialog.cpp
+    src/projectsettingsdialog.h
+    src/projectsettingswidget.cpp
+    src/projectsettingswidget.h
+    src/descriptiongenerator.cpp
+    src/descriptiongenerator.h
+    src/applicationsettingsdialog.cpp
+    src/applicationsettingsdialog.h
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
@@ -23,46 +55,24 @@ if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
         MANUAL_FINALIZATION
         ${PROJECT_SOURCES}
     )
-# Define target properties for Android with Qt 6 as:
-#    set_property(TARGET VibeKoder APPEND PROPERTY QT_ANDROID_PACKAGE_SOURCE_DIR
-#                 ${CMAKE_CURRENT_SOURCE_DIR}/android)
-# For more information, see https://doc.qt.io/qt-6/qt-add-executable.html#target-creation
 else()
     if(ANDROID)
         add_library(VibeKoder SHARED
             ${PROJECT_SOURCES}
         )
-# Define properties for Android with Qt 5 after find_package() calls as:
-#    set(ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android")
     else()
         add_executable(VibeKoder
             ${PROJECT_SOURCES}
-            project.h project.cpp
-            session.h session.cpp
-
-
-
-            sessiontabwidget.h sessiontabwidget.cpp
-            commandpipemanager.h commandpipemanager.cpp
-            draggabletabwidget.cpp
-            draggabletabwidget.h
-            detachedwindow.h detachedwindow.cpp
-            aibackend.h aibackend.cpp
-            openaibackend.h openaibackend.cpp
-            tabmanager.h tabmanager.cpp
-            appconfig.h appconfig.cpp
-            projectsettingsdialog.h projectsettingsdialog.cpp
-            configmanager.h configmanager.cpp
-            files.qrc
-            projectsettingswidget.h projectsettingswidget.cpp
-            applicationsettingsdialog.h applicationsettingsdialog.cpp
-            descriptiongenerator.h descriptiongenerator.cpp
-            #sourcefileselectiondialog.h sourcefileselectiondialog.cpp
         )
     endif()
 endif()
 
-target_link_libraries(VibeKoder PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network)
+target_include_directories(VibeKoder PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    src
+)
+
+target_link_libraries(VibeKoder PRIVATE Qt${QT_VERSION_MAJOR}::Widgets Qt${QT_VERSION_MAJOR}::Network qmarkdowntextedit)
 
 # Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
 # If you are developing for iOS or macOS you should consider setting an

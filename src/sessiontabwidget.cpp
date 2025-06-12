@@ -157,8 +157,8 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
     // Bottom splitter for slice viewer and append user prompt
     auto bottomSplitter = new QSplitter(Qt::Vertical, mainSplitter);
 
-    m_sliceViewer = new QTextEdit(bottomSplitter);
-    m_sliceViewer->setAcceptRichText(false);
+    m_sliceViewer = new QMarkdownTextEdit(bottomSplitter);
+    //m_sliceViewer->setAcceptRichText(false);
     m_sliceViewer->setReadOnly(true);
 
     m_appendUserPrompt = new QPlainTextEdit(bottomSplitter);
@@ -648,7 +648,7 @@ void SessionTabWidget::updateUiForSelectedSlice(int selectedIndex)
             // Last slice is assistant-role: split view with m_sliceViewer and m_appendUserPrompt
             m_sliceViewer->show();
             m_sliceViewer->setEnabled(true);
-            m_sliceViewer->setMarkdown(selectedSlice.content);
+            m_sliceViewer->setPlainText(selectedSlice.content);
 
             m_appendUserPrompt->show();
             m_appendUserPrompt->setEnabled(true);
@@ -672,7 +672,7 @@ void SessionTabWidget::updateUiForSelectedSlice(int selectedIndex)
         // Show split view: penultimate slice in m_sliceViewer (read-only), last user slice in m_appendUserPrompt (editable)
         m_sliceViewer->show();
         m_sliceViewer->setEnabled(true);
-        m_sliceViewer->setMarkdown(selectedSlice.content);
+        m_sliceViewer->setPlainText(selectedSlice.content);
 
         m_appendUserPrompt->show();
         m_appendUserPrompt->setEnabled(true);
@@ -699,7 +699,7 @@ void SessionTabWidget::updateUiForSelectedSlice(int selectedIndex)
         // Any other slice selected: show m_sliceViewer read-only, hide m_appendUserPrompt
         m_sliceViewer->show();
         m_sliceViewer->setEnabled(true);
-        m_sliceViewer->setMarkdown(selectedSlice.content);
+        m_sliceViewer->setPlainText(selectedSlice.content);
 
         // Save current user input before hiding
         if (m_appendUserPrompt->isVisible() && m_appendUserPrompt->isEnabled()) {
@@ -938,7 +938,7 @@ void SessionTabWidget::onPartialResponse(const QString &requestId, const QString
 
     m_sliceViewer->blockSignals(true);
     m_updatingEditor = true;
-    m_sliceViewer->setMarkdown(m_partialResponseBuffer);
+    m_sliceViewer->setPlainText(m_partialResponseBuffer);
     m_updatingEditor = false;
     m_sliceViewer->blockSignals(false);
 
@@ -985,7 +985,7 @@ void SessionTabWidget::onFinished(const QString &requestId, const QString &fullR
 
     m_sliceViewer->blockSignals(true);
     m_updatingEditor = true;
-    m_sliceViewer->setMarkdown(fullResponse);
+    m_sliceViewer->setPlainText(fullResponse);
     m_updatingEditor = false;
     m_sliceViewer->blockSignals(false);
 

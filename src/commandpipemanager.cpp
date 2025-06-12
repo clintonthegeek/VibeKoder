@@ -130,6 +130,12 @@ QStringList CommandPipeManager::scanSourceFiles() const
         //TODO: REPLACE THIS WITH EXCLUDE SETTINGS
         // Exclude any path containing build
         QString normalizedPath = QDir::toNativeSeparators(filePath).toLower();
+        if (normalizedPath.contains(QDir::toNativeSeparators("/qmarkdowntextedit/")) ||
+            normalizedPath.contains(QDir::toNativeSeparators("\\qmarkdowntextedit\\"))) {
+            qDebug() << "[scanSourceFiles] Skipping file in qmarkdowntextedit folder:" << filePath;
+            continue;
+        }
+
         if (normalizedPath.contains(QDir::toNativeSeparators("/build/")) ||
             normalizedPath.contains(QDir::toNativeSeparators("\\build\\"))) {
             qDebug() << "[scanSourceFiles] Skipping file in build folder:" << filePath;

@@ -16,6 +16,7 @@
 #include "session.h"
 #include "aibackend.h"
 #include "openaibackend.h"
+#include "qmarkdowntextedit/qmarkdowntextedit.h"
 
 class SessionTabWidget : public QWidget
 {
@@ -81,7 +82,7 @@ private:
     QPushButton* m_forkButton = nullptr;
     QPushButton* m_openMarkdownButton = nullptr;
     QPushButton* m_openCacheButton = nullptr;
-    QTextEdit* m_sliceViewer = nullptr;
+    QMarkdownTextEdit* m_sliceViewer = nullptr;
     QPlainTextEdit* m_appendUserPrompt = nullptr;
     QPushButton* m_sendButton = nullptr;
     QPushButton* m_saveButton = nullptr;
