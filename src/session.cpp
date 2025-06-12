@@ -759,7 +759,8 @@ bool Session::parseSessionFile(const QString &data)
         }
     }
 
-    QStringList lines = data.mid(pos).split(QRegularExpression("[\r\n]+"));
+    //QStringList lines = data.mid(pos).split(QRegularExpression("[\r\n]+"));
+    QStringList lines = data.mid(pos).split(QRegularExpression("\r\n|\n|\r"), Qt::KeepEmptyParts);
 
     QVector<PromptSlice> slices;
 
