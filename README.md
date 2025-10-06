@@ -4,6 +4,8 @@
 
 VibeKoder is a Qt/C++ program client to the OpenAI API designed around the workflow of "percussing" or "striking" available LLMs with textual strings and the capture of responses. It explicitly undercuts the conversational, linear chat interface.
 
+![A Screenshot of VibeKoder](docs/VK.png?raw=true "VibeKoder")
+
 The primary metaphor is that of a percussion instrument, like a drumkit or a bell. Depending on where and how you strike a percussion instrument, it returns a different and complimentary resonant sound. While the elaboration of a linear conversation is easily achievable in VibeKoder, it is only one direction of movement. Orthogonal to linear conversation, the user is afforded lateral moves through dynamic changes in the initial prompt, via differently configurations or live updated from linked files or inputs. 
 
 For instance, instead of beginning the prompt with source code, and then having a long conversation where proposed edits are made and merged, slowly drifting from the initial source, the initial source can be updated at any point by a lateral move which directly sources the latest code base. This movement is entirely controlled by the user in a conscious and deliberate way.
