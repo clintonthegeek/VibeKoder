@@ -1,0 +1,1951 @@
+PATH: /assistants
+METHOD: GET
+OPERATION ID: listAssistants
+SUMMARY: Returns a list of assistants.
+PARAMETERS:
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListAssistantsResponse"}
+----------------------------------------
+PATH: /assistants
+METHOD: POST
+OPERATION ID: createAssistant
+SUMMARY: Create an assistant with a model and instructions.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateAssistantRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/AssistantObject"}
+----------------------------------------
+PATH: /assistants/{assistant_id}
+METHOD: GET
+OPERATION ID: getAssistant
+SUMMARY: Retrieves an assistant.
+PARAMETERS:
+  - assistant_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/AssistantObject"}
+----------------------------------------
+PATH: /assistants/{assistant_id}
+METHOD: POST
+OPERATION ID: modifyAssistant
+SUMMARY: Modifies an assistant.
+PARAMETERS:
+  - assistant_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ModifyAssistantRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/AssistantObject"}
+----------------------------------------
+PATH: /assistants/{assistant_id}
+METHOD: DELETE
+OPERATION ID: deleteAssistant
+SUMMARY: Delete an assistant.
+PARAMETERS:
+  - assistant_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteAssistantResponse"}
+----------------------------------------
+PATH: /audio/speech
+METHOD: POST
+OPERATION ID: createSpeech
+SUMMARY: Generates audio from the input text.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateSpeechRequest"}
+RESPONSE SCHEMA (200):
+  None
+----------------------------------------
+PATH: /audio/transcriptions
+METHOD: POST
+OPERATION ID: createTranscription
+SUMMARY: Transcribes audio into the input language.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"oneOf":[{"$ref":"#/components/schemas/CreateTranscriptionResponseJson"},{"$ref":"#/components/schemas/CreateTranscriptionResponseVerboseJson"}]}
+----------------------------------------
+PATH: /audio/translations
+METHOD: POST
+OPERATION ID: createTranslation
+SUMMARY: Translates audio into English.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"oneOf":[{"$ref":"#/components/schemas/CreateTranslationResponseJson"},{"$ref":"#/components/schemas/CreateTranslationResponseVerboseJson"}]}
+----------------------------------------
+PATH: /batches
+METHOD: POST
+OPERATION ID: createBatch
+SUMMARY: Creates and executes a batch from an uploaded file of requests
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"type":"object","required":["input_file_id","endpoint","completion_window"],"properties":{"input_file_id":{"type":"string","description":"The ID of an uploaded file that contains requests for the new batch.\n\nSee [upload file](/docs/api-reference/files/create) for how to upload a file.\n\nYour input file must be formatted as a [JSONL file](/docs/api-reference/batch/request-input), and must be uploaded with the purpose `batch`. The file can contain up to 50,000 requests, and can be up to 200 MB in size.\n"},"endpoint":{"type":"string","enum":["/v1/responses","/v1/chat/completions","/v1/embeddings","/v1/completions"],"description":"The endpoint to be used for all requests in the batch. Currently `/v1/responses`, `/v1/chat/completions`, `/v1/embeddings`, and `/v1/completions` are supported. Note that `/v1/embeddings` batches are also restricted to a maximum of 50,000 embedding inputs across all requests in the batch."},"completion_window":{"type":"string","enum":["24h"],"description":"The time frame within which the batch should be processed. Currently only `24h` is supported."},"metadata":{"$ref":"#/components/schemas/Metadata"}}}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Batch"}
+----------------------------------------
+PATH: /batches
+METHOD: GET
+OPERATION ID: listBatches
+SUMMARY: List your organization's batches.
+PARAMETERS:
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListBatchesResponse"}
+----------------------------------------
+PATH: /batches/{batch_id}
+METHOD: GET
+OPERATION ID: retrieveBatch
+SUMMARY: Retrieves a batch.
+PARAMETERS:
+  - batch_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Batch"}
+----------------------------------------
+PATH: /batches/{batch_id}/cancel
+METHOD: POST
+OPERATION ID: cancelBatch
+SUMMARY: Cancels an in-progress batch. The batch will be in status `cancelling` for up to 10 minutes, before changing to `cancelled`, where it will have partial results (if any) available in the output file.
+PARAMETERS:
+  - batch_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Batch"}
+----------------------------------------
+PATH: /chat/completions
+METHOD: GET
+OPERATION ID: listChatCompletions
+SUMMARY: List stored Chat Completions. Only Chat Completions that have been stored
+with the `store` parameter set to `true` will be returned.
+
+PARAMETERS:
+  - model (in: query, required: false, type: string)
+  - metadata (in: query, required: false, type: unknown)
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ChatCompletionList"}
+----------------------------------------
+PATH: /chat/completions
+METHOD: POST
+OPERATION ID: createChatCompletion
+SUMMARY: **Starting a new project?** We recommend trying [Responses](/docs/api-reference/responses) 
+to take advantage of the latest OpenAI platform features. Compare
+[Chat Completions with Responses](/docs/guides/responses-vs-chat-completions?api-mode=responses).
+
+---
+
+Creates a model response for the given chat conversation. Learn more in the
+[text generation](/docs/guides/text-generation), [vision](/docs/guides/vision),
+and [audio](/docs/guides/audio) guides.
+
+Parameter support can differ depending on the model used to generate the
+response, particularly for newer reasoning models. Parameters that are only
+supported for reasoning models are noted below. For the current state of 
+unsupported parameters in reasoning models, 
+[refer to the reasoning guide](/docs/guides/reasoning).
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateChatCompletionRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/CreateChatCompletionResponse"}
+----------------------------------------
+PATH: /chat/completions/{completion_id}
+METHOD: GET
+OPERATION ID: getChatCompletion
+SUMMARY: Get a stored chat completion. Only Chat Completions that have been created
+with the `store` parameter set to `true` will be returned.
+
+PARAMETERS:
+  - completion_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/CreateChatCompletionResponse"}
+----------------------------------------
+PATH: /chat/completions/{completion_id}
+METHOD: POST
+OPERATION ID: updateChatCompletion
+SUMMARY: Modify a stored chat completion. Only Chat Completions that have been
+created with the `store` parameter set to `true` can be modified. Currently,
+the only supported modification is to update the `metadata` field.
+
+PARAMETERS:
+  - completion_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"type":"object","required":["metadata"],"properties":{"metadata":{"$ref":"#/components/schemas/Metadata"}}}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/CreateChatCompletionResponse"}
+----------------------------------------
+PATH: /chat/completions/{completion_id}
+METHOD: DELETE
+OPERATION ID: deleteChatCompletion
+SUMMARY: Delete a stored chat completion. Only Chat Completions that have been
+created with the `store` parameter set to `true` can be deleted.
+
+PARAMETERS:
+  - completion_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ChatCompletionDeleted"}
+----------------------------------------
+PATH: /chat/completions/{completion_id}/messages
+METHOD: GET
+OPERATION ID: getChatCompletionMessages
+SUMMARY: Get the messages in a stored chat completion. Only Chat Completions that
+have been created with the `store` parameter set to `true` will be
+returned.
+
+PARAMETERS:
+  - completion_id (in: path, required: true, type: string)
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ChatCompletionMessageList"}
+----------------------------------------
+PATH: /completions
+METHOD: POST
+OPERATION ID: createCompletion
+SUMMARY: Creates a completion for the provided prompt and parameters.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateCompletionRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/CreateCompletionResponse"}
+----------------------------------------
+PATH: /embeddings
+METHOD: POST
+OPERATION ID: createEmbedding
+SUMMARY: Creates an embedding vector representing the input text.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateEmbeddingRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/CreateEmbeddingResponse"}
+----------------------------------------
+PATH: /evals
+METHOD: GET
+OPERATION ID: listEvals
+SUMMARY: List evaluations for a project.
+
+PARAMETERS:
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: false, type: string)
+  - order_by (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/EvalList"}
+----------------------------------------
+PATH: /evals
+METHOD: POST
+OPERATION ID: createEval
+SUMMARY: Create the structure of an evaluation that can be used to test a model's performance.
+An evaluation is a set of testing criteria and a datasource. After creating an evaluation, you can run it on different models and model parameters. We support several types of graders and datasources.
+For more information, see the [Evals guide](/docs/guides/evals).
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateEvalRequest"}
+RESPONSE SCHEMA (200):
+  None
+----------------------------------------
+PATH: /evals/{eval_id}
+METHOD: GET
+OPERATION ID: getEval
+SUMMARY: Get an evaluation by ID.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Eval"}
+----------------------------------------
+PATH: /evals/{eval_id}
+METHOD: POST
+OPERATION ID: updateEval
+SUMMARY: Update certain properties of an evaluation.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"type":"object","properties":{"name":{"type":"string","description":"Rename the evaluation."},"metadata":{"$ref":"#/components/schemas/Metadata"}}}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Eval"}
+----------------------------------------
+PATH: /evals/{eval_id}
+METHOD: DELETE
+OPERATION ID: deleteEval
+SUMMARY: Delete an evaluation.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"type":"object","properties":{"object":{"type":"string","example":"eval.deleted"},"deleted":{"type":"boolean","example":true},"eval_id":{"type":"string","example":"eval_abc123"}},"required":["object","deleted","eval_id"]}
+----------------------------------------
+PATH: /evals/{eval_id}/runs
+METHOD: GET
+OPERATION ID: getEvalRuns
+SUMMARY: Get a list of runs for an evaluation.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: false, type: string)
+  - status (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/EvalRunList"}
+----------------------------------------
+PATH: /evals/{eval_id}/runs
+METHOD: POST
+OPERATION ID: createEvalRun
+SUMMARY: Create a new evaluation run. This is the endpoint that will kick off grading.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateEvalRunRequest"}
+RESPONSE SCHEMA (200):
+  None
+----------------------------------------
+PATH: /evals/{eval_id}/runs/{run_id}
+METHOD: GET
+OPERATION ID: getEvalRun
+SUMMARY: Get an evaluation run by ID.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/EvalRun"}
+----------------------------------------
+PATH: /evals/{eval_id}/runs/{run_id}
+METHOD: POST
+OPERATION ID: cancelEvalRun
+SUMMARY: Cancel an ongoing evaluation run.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/EvalRun"}
+----------------------------------------
+PATH: /evals/{eval_id}/runs/{run_id}
+METHOD: DELETE
+OPERATION ID: deleteEvalRun
+SUMMARY: Delete an eval run.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"type":"object","properties":{"object":{"type":"string","example":"eval.run.deleted"},"deleted":{"type":"boolean","example":true},"run_id":{"type":"string","example":"evalrun_677469f564d48190807532a852da3afb"}}}
+----------------------------------------
+PATH: /evals/{eval_id}/runs/{run_id}/output_items
+METHOD: GET
+OPERATION ID: getEvalRunOutputItems
+SUMMARY: Get a list of output items for an evaluation run.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+  - status (in: query, required: false, type: string)
+  - order (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/EvalRunOutputItemList"}
+----------------------------------------
+PATH: /evals/{eval_id}/runs/{run_id}/output_items/{output_item_id}
+METHOD: GET
+OPERATION ID: getEvalRunOutputItem
+SUMMARY: Get an evaluation run output item by ID.
+
+PARAMETERS:
+  - eval_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+  - output_item_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/EvalRunOutputItem"}
+----------------------------------------
+PATH: /files
+METHOD: GET
+OPERATION ID: listFiles
+SUMMARY: Returns a list of files.
+PARAMETERS:
+  - purpose (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListFilesResponse"}
+----------------------------------------
+PATH: /files
+METHOD: POST
+OPERATION ID: createFile
+SUMMARY: Upload a file that can be used across various endpoints. Individual files can be up to 512 MB, and the size of all files uploaded by one organization can be up to 100 GB.
+
+The Assistants API supports files up to 2 million tokens and of specific file types. See the [Assistants Tools guide](/docs/assistants/tools) for details.
+
+The Fine-tuning API only supports `.jsonl` files. The input also has certain required formats for fine-tuning [chat](/docs/api-reference/fine-tuning/chat-input) or [completions](/docs/api-reference/fine-tuning/completions-input) models.
+
+The Batch API only supports `.jsonl` files up to 200 MB in size. The input also has a specific required [format](/docs/api-reference/batch/request-input).
+
+Please [contact us](https://help.openai.com/) if you need to increase these storage limits.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/OpenAIFile"}
+----------------------------------------
+PATH: /files/{file_id}
+METHOD: DELETE
+OPERATION ID: deleteFile
+SUMMARY: Delete a file.
+PARAMETERS:
+  - file_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteFileResponse"}
+----------------------------------------
+PATH: /files/{file_id}
+METHOD: GET
+OPERATION ID: retrieveFile
+SUMMARY: Returns information about a specific file.
+PARAMETERS:
+  - file_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/OpenAIFile"}
+----------------------------------------
+PATH: /files/{file_id}/content
+METHOD: GET
+OPERATION ID: downloadFile
+SUMMARY: Returns the contents of the specified file.
+PARAMETERS:
+  - file_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"type":"string"}
+----------------------------------------
+PATH: /fine_tuning/checkpoints/{fine_tuned_model_checkpoint}/permissions
+METHOD: GET
+OPERATION ID: listFineTuningCheckpointPermissions
+SUMMARY: **NOTE:** This endpoint requires an [admin API key](../admin-api-keys).
+
+Organization owners can use this endpoint to view all permissions for a fine-tuned model checkpoint.
+
+PARAMETERS:
+  - fine_tuned_model_checkpoint (in: path, required: true, type: string)
+  - project_id (in: query, required: false, type: string)
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListFineTuningCheckpointPermissionResponse"}
+----------------------------------------
+PATH: /fine_tuning/checkpoints/{fine_tuned_model_checkpoint}/permissions
+METHOD: POST
+OPERATION ID: createFineTuningCheckpointPermission
+SUMMARY: **NOTE:** Calling this endpoint requires an [admin API key](../admin-api-keys).
+
+This enables organization owners to share fine-tuned models with other projects in their organization.
+
+PARAMETERS:
+  - fine_tuned_model_checkpoint (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateFineTuningCheckpointPermissionRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListFineTuningCheckpointPermissionResponse"}
+----------------------------------------
+PATH: /fine_tuning/checkpoints/{fine_tuned_model_checkpoint}/permissions/{permission_id}
+METHOD: DELETE
+OPERATION ID: deleteFineTuningCheckpointPermission
+SUMMARY: **NOTE:** This endpoint requires an [admin API key](../admin-api-keys).
+
+Organization owners can use this endpoint to delete a permission for a fine-tuned model checkpoint.
+
+PARAMETERS:
+  - fine_tuned_model_checkpoint (in: path, required: true, type: string)
+  - permission_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteFineTuningCheckpointPermissionResponse"}
+----------------------------------------
+PATH: /fine_tuning/jobs
+METHOD: POST
+OPERATION ID: createFineTuningJob
+SUMMARY: Creates a fine-tuning job which begins the process of creating a new model from a given dataset.
+
+Response includes details of the enqueued job including job status and the name of the fine-tuned models once complete.
+
+[Learn more about fine-tuning](/docs/guides/fine-tuning)
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateFineTuningJobRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/FineTuningJob"}
+----------------------------------------
+PATH: /fine_tuning/jobs
+METHOD: GET
+OPERATION ID: listPaginatedFineTuningJobs
+SUMMARY: List your organization's fine-tuning jobs
+
+PARAMETERS:
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+  - metadata (in: query, required: false, type: object)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListPaginatedFineTuningJobsResponse"}
+----------------------------------------
+PATH: /fine_tuning/jobs/{fine_tuning_job_id}
+METHOD: GET
+OPERATION ID: retrieveFineTuningJob
+SUMMARY: Get info about a fine-tuning job.
+
+[Learn more about fine-tuning](/docs/guides/fine-tuning)
+
+PARAMETERS:
+  - fine_tuning_job_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/FineTuningJob"}
+----------------------------------------
+PATH: /fine_tuning/jobs/{fine_tuning_job_id}/cancel
+METHOD: POST
+OPERATION ID: cancelFineTuningJob
+SUMMARY: Immediately cancel a fine-tune job.
+
+PARAMETERS:
+  - fine_tuning_job_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/FineTuningJob"}
+----------------------------------------
+PATH: /fine_tuning/jobs/{fine_tuning_job_id}/checkpoints
+METHOD: GET
+OPERATION ID: listFineTuningJobCheckpoints
+SUMMARY: List checkpoints for a fine-tuning job.
+
+PARAMETERS:
+  - fine_tuning_job_id (in: path, required: true, type: string)
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListFineTuningJobCheckpointsResponse"}
+----------------------------------------
+PATH: /fine_tuning/jobs/{fine_tuning_job_id}/events
+METHOD: GET
+OPERATION ID: listFineTuningEvents
+SUMMARY: Get status updates for a fine-tuning job.
+
+PARAMETERS:
+  - fine_tuning_job_id (in: path, required: true, type: string)
+  - after (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListFineTuningJobEventsResponse"}
+----------------------------------------
+PATH: /images/edits
+METHOD: POST
+OPERATION ID: createImageEdit
+SUMMARY: Creates an edited or extended image given one or more source images and a prompt. This endpoint only supports `gpt-image-1` and `dall-e-2`.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ImagesResponse"}
+----------------------------------------
+PATH: /images/generations
+METHOD: POST
+OPERATION ID: createImage
+SUMMARY: Creates an image given a prompt. [Learn more](/docs/guides/images).
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateImageRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ImagesResponse"}
+----------------------------------------
+PATH: /images/variations
+METHOD: POST
+OPERATION ID: createImageVariation
+SUMMARY: Creates a variation of a given image. This endpoint only supports `dall-e-2`.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ImagesResponse"}
+----------------------------------------
+PATH: /models
+METHOD: GET
+OPERATION ID: listModels
+SUMMARY: Lists the currently available models, and provides basic information about each one such as the owner and availability.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListModelsResponse"}
+----------------------------------------
+PATH: /models/{model}
+METHOD: GET
+OPERATION ID: retrieveModel
+SUMMARY: Retrieves a model instance, providing basic information about the model such as the owner and permissioning.
+PARAMETERS:
+  - model (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Model"}
+----------------------------------------
+PATH: /models/{model}
+METHOD: DELETE
+OPERATION ID: deleteModel
+SUMMARY: Delete a fine-tuned model. You must have the Owner role in your organization to delete a model.
+PARAMETERS:
+  - model (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteModelResponse"}
+----------------------------------------
+PATH: /moderations
+METHOD: POST
+OPERATION ID: createModeration
+SUMMARY: Classifies if text and/or image inputs are potentially harmful. Learn
+more in the [moderation guide](/docs/guides/moderation).
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateModerationRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/CreateModerationResponse"}
+----------------------------------------
+PATH: /organization/admin_api_keys
+METHOD: GET
+OPERATION ID: admin-api-keys-list
+SUMMARY: List organization API keys
+PARAMETERS:
+  - after (in: query, required: false, type: string)
+  - order (in: query, required: false, type: string)
+  - limit (in: query, required: false, type: integer)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ApiKeyList"}
+----------------------------------------
+PATH: /organization/admin_api_keys
+METHOD: POST
+OPERATION ID: admin-api-keys-create
+SUMMARY: Create an organization admin API key
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"type":"object","required":["name"],"properties":{"name":{"type":"string","example":"New Admin Key"}}}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/AdminApiKey"}
+----------------------------------------
+PATH: /organization/admin_api_keys/{key_id}
+METHOD: GET
+OPERATION ID: admin-api-keys-get
+SUMMARY: Retrieve a single organization API key
+PARAMETERS:
+  - key_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/AdminApiKey"}
+----------------------------------------
+PATH: /organization/admin_api_keys/{key_id}
+METHOD: DELETE
+OPERATION ID: admin-api-keys-delete
+SUMMARY: Delete an organization admin API key
+PARAMETERS:
+  - key_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"type":"object","properties":{"id":{"type":"string","example":"key_abc"},"object":{"type":"string","example":"organization.admin_api_key.deleted"},"deleted":{"type":"boolean","example":true}}}
+----------------------------------------
+PATH: /organization/audit_logs
+METHOD: GET
+OPERATION ID: list-audit-logs
+SUMMARY: List user actions and configuration changes within this organization.
+PARAMETERS:
+  - effective_at (in: query, required: false, type: object)
+  - project_ids[] (in: query, required: false, type: array)
+  - event_types[] (in: query, required: false, type: array)
+  - actor_ids[] (in: query, required: false, type: array)
+  - actor_emails[] (in: query, required: false, type: array)
+  - resource_ids[] (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListAuditLogsResponse"}
+----------------------------------------
+PATH: /organization/certificates
+METHOD: GET
+OPERATION ID: listOrganizationCertificates
+SUMMARY: List uploaded certificates for this organization.
+PARAMETERS:
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+  - order (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListCertificatesResponse"}
+----------------------------------------
+PATH: /organization/certificates
+METHOD: POST
+OPERATION ID: uploadCertificate
+SUMMARY: Upload a certificate to the organization. This does **not** automatically activate the certificate.
+
+Organizations can upload up to 50 certificates.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/UploadCertificateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Certificate"}
+----------------------------------------
+PATH: /organization/certificates/activate
+METHOD: POST
+OPERATION ID: activateOrganizationCertificates
+SUMMARY: Activate certificates at the organization level.
+
+You can atomically and idempotently activate up to 10 certificates at a time.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ToggleCertificatesRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListCertificatesResponse"}
+----------------------------------------
+PATH: /organization/certificates/deactivate
+METHOD: POST
+OPERATION ID: deactivateOrganizationCertificates
+SUMMARY: Deactivate certificates at the organization level.
+
+You can atomically and idempotently deactivate up to 10 certificates at a time.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ToggleCertificatesRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListCertificatesResponse"}
+----------------------------------------
+PATH: /organization/certificates/{certificate_id}
+METHOD: GET
+OPERATION ID: getCertificate
+SUMMARY: Get a certificate that has been uploaded to the organization.
+
+You can get a certificate regardless of whether it is active or not.
+
+PARAMETERS:
+  - cert_id (in: path, required: true, type: string)
+  - include (in: query, required: false, type: array)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Certificate"}
+----------------------------------------
+PATH: /organization/certificates/{certificate_id}
+METHOD: POST
+OPERATION ID: modifyCertificate
+SUMMARY: Modify a certificate. Note that only the name can be modified.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ModifyCertificateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Certificate"}
+----------------------------------------
+PATH: /organization/certificates/{certificate_id}
+METHOD: DELETE
+OPERATION ID: deleteCertificate
+SUMMARY: Delete a certificate from the organization.
+
+The certificate must be inactive for the organization and all projects.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteCertificateResponse"}
+----------------------------------------
+PATH: /organization/costs
+METHOD: GET
+OPERATION ID: usage-costs
+SUMMARY: Get costs details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - project_ids (in: query, required: false, type: array)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/invites
+METHOD: GET
+OPERATION ID: list-invites
+SUMMARY: Returns a list of invites in the organization.
+PARAMETERS:
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/InviteListResponse"}
+----------------------------------------
+PATH: /organization/invites
+METHOD: POST
+OPERATION ID: inviteUser
+SUMMARY: Create an invite for a user to the organization. The invite must be accepted by the user before they have access to the organization.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/InviteRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Invite"}
+----------------------------------------
+PATH: /organization/invites/{invite_id}
+METHOD: GET
+OPERATION ID: retrieve-invite
+SUMMARY: Retrieves an invite.
+PARAMETERS:
+  - invite_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Invite"}
+----------------------------------------
+PATH: /organization/invites/{invite_id}
+METHOD: DELETE
+OPERATION ID: delete-invite
+SUMMARY: Delete an invite. If the invite has already been accepted, it cannot be deleted.
+PARAMETERS:
+  - invite_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/InviteDeleteResponse"}
+----------------------------------------
+PATH: /organization/projects
+METHOD: GET
+OPERATION ID: list-projects
+SUMMARY: Returns a list of projects.
+PARAMETERS:
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+  - include_archived (in: query, required: null, type: boolean)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectListResponse"}
+----------------------------------------
+PATH: /organization/projects
+METHOD: POST
+OPERATION ID: create-project
+SUMMARY: Create a new project in the organization. Projects can be created and archived, but cannot be deleted.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ProjectCreateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Project"}
+----------------------------------------
+PATH: /organization/projects/{project_id}
+METHOD: GET
+OPERATION ID: retrieve-project
+SUMMARY: Retrieves a project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Project"}
+----------------------------------------
+PATH: /organization/projects/{project_id}
+METHOD: POST
+OPERATION ID: modify-project
+SUMMARY: Modifies a project in the organization.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ProjectUpdateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Project"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/api_keys
+METHOD: GET
+OPERATION ID: list-project-api-keys
+SUMMARY: Returns a list of API keys in the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectApiKeyListResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/api_keys/{key_id}
+METHOD: GET
+OPERATION ID: retrieve-project-api-key
+SUMMARY: Retrieves an API key in the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - key_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectApiKey"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/api_keys/{key_id}
+METHOD: DELETE
+OPERATION ID: delete-project-api-key
+SUMMARY: Deletes an API key from the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - key_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectApiKeyDeleteResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/archive
+METHOD: POST
+OPERATION ID: archive-project
+SUMMARY: Archives a project in the organization. Archived projects cannot be used or updated.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Project"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/certificates
+METHOD: GET
+OPERATION ID: listProjectCertificates
+SUMMARY: List certificates for this project.
+PARAMETERS:
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+  - order (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListCertificatesResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/certificates/activate
+METHOD: POST
+OPERATION ID: activateProjectCertificates
+SUMMARY: Activate certificates at the project level.
+
+You can atomically and idempotently activate up to 10 certificates at a time.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ToggleCertificatesRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListCertificatesResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/certificates/deactivate
+METHOD: POST
+OPERATION ID: deactivateProjectCertificates
+SUMMARY: Deactivate certificates at the project level.
+
+You can atomically and idempotently deactivate up to 10 certificates at a time.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ToggleCertificatesRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListCertificatesResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/rate_limits
+METHOD: GET
+OPERATION ID: list-project-rate-limits
+SUMMARY: Returns the rate limits per model for a project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+  - before (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectRateLimitListResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/rate_limits/{rate_limit_id}
+METHOD: POST
+OPERATION ID: update-project-rate-limits
+SUMMARY: Updates a project rate limit.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - rate_limit_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ProjectRateLimitUpdateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectRateLimit"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/service_accounts
+METHOD: GET
+OPERATION ID: list-project-service-accounts
+SUMMARY: Returns a list of service accounts in the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectServiceAccountListResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/service_accounts
+METHOD: POST
+OPERATION ID: create-project-service-account
+SUMMARY: Creates a new service account in the project. This also returns an unredacted API key for the service account.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ProjectServiceAccountCreateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectServiceAccountCreateResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/service_accounts/{service_account_id}
+METHOD: GET
+OPERATION ID: retrieve-project-service-account
+SUMMARY: Retrieves a service account in the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - service_account_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectServiceAccount"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/service_accounts/{service_account_id}
+METHOD: DELETE
+OPERATION ID: delete-project-service-account
+SUMMARY: Deletes a service account from the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - service_account_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectServiceAccountDeleteResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/users
+METHOD: GET
+OPERATION ID: list-project-users
+SUMMARY: Returns a list of users in the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectUserListResponse"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/users
+METHOD: POST
+OPERATION ID: create-project-user
+SUMMARY: Adds a user to the project. Users must already be members of the organization to be added to a project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ProjectUserCreateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectUser"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/users/{user_id}
+METHOD: GET
+OPERATION ID: retrieve-project-user
+SUMMARY: Retrieves a user in the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - user_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectUser"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/users/{user_id}
+METHOD: POST
+OPERATION ID: modify-project-user
+SUMMARY: Modifies a user's role in the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - user_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ProjectUserUpdateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectUser"}
+----------------------------------------
+PATH: /organization/projects/{project_id}/users/{user_id}
+METHOD: DELETE
+OPERATION ID: delete-project-user
+SUMMARY: Deletes a user from the project.
+PARAMETERS:
+  - project_id (in: path, required: true, type: string)
+  - user_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ProjectUserDeleteResponse"}
+----------------------------------------
+PATH: /organization/usage/audio_speeches
+METHOD: GET
+OPERATION ID: usage-audio-speeches
+SUMMARY: Get audio speeches usage details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - project_ids (in: query, required: false, type: array)
+  - user_ids (in: query, required: false, type: array)
+  - api_key_ids (in: query, required: false, type: array)
+  - models (in: query, required: false, type: array)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/usage/audio_transcriptions
+METHOD: GET
+OPERATION ID: usage-audio-transcriptions
+SUMMARY: Get audio transcriptions usage details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - project_ids (in: query, required: false, type: array)
+  - user_ids (in: query, required: false, type: array)
+  - api_key_ids (in: query, required: false, type: array)
+  - models (in: query, required: false, type: array)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/usage/code_interpreter_sessions
+METHOD: GET
+OPERATION ID: usage-code-interpreter-sessions
+SUMMARY: Get code interpreter sessions usage details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - project_ids (in: query, required: false, type: array)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/usage/completions
+METHOD: GET
+OPERATION ID: usage-completions
+SUMMARY: Get completions usage details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - project_ids (in: query, required: false, type: array)
+  - user_ids (in: query, required: false, type: array)
+  - api_key_ids (in: query, required: false, type: array)
+  - models (in: query, required: false, type: array)
+  - batch (in: query, required: false, type: boolean)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/usage/embeddings
+METHOD: GET
+OPERATION ID: usage-embeddings
+SUMMARY: Get embeddings usage details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - project_ids (in: query, required: false, type: array)
+  - user_ids (in: query, required: false, type: array)
+  - api_key_ids (in: query, required: false, type: array)
+  - models (in: query, required: false, type: array)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/usage/images
+METHOD: GET
+OPERATION ID: usage-images
+SUMMARY: Get images usage details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - sources (in: query, required: false, type: array)
+  - sizes (in: query, required: false, type: array)
+  - project_ids (in: query, required: false, type: array)
+  - user_ids (in: query, required: false, type: array)
+  - api_key_ids (in: query, required: false, type: array)
+  - models (in: query, required: false, type: array)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/usage/moderations
+METHOD: GET
+OPERATION ID: usage-moderations
+SUMMARY: Get moderations usage details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - project_ids (in: query, required: false, type: array)
+  - user_ids (in: query, required: false, type: array)
+  - api_key_ids (in: query, required: false, type: array)
+  - models (in: query, required: false, type: array)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/usage/vector_stores
+METHOD: GET
+OPERATION ID: usage-vector-stores
+SUMMARY: Get vector stores usage details for the organization.
+PARAMETERS:
+  - start_time (in: query, required: true, type: integer)
+  - end_time (in: query, required: false, type: integer)
+  - bucket_width (in: query, required: false, type: string)
+  - project_ids (in: query, required: false, type: array)
+  - group_by (in: query, required: false, type: array)
+  - limit (in: query, required: false, type: integer)
+  - page (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UsageResponse"}
+----------------------------------------
+PATH: /organization/users
+METHOD: GET
+OPERATION ID: list-users
+SUMMARY: Lists all of the users in the organization.
+PARAMETERS:
+  - limit (in: query, required: false, type: integer)
+  - after (in: query, required: false, type: string)
+  - emails (in: query, required: false, type: array)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UserListResponse"}
+----------------------------------------
+PATH: /organization/users/{user_id}
+METHOD: GET
+OPERATION ID: retrieve-user
+SUMMARY: Retrieves a user by their identifier.
+PARAMETERS:
+  - user_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/User"}
+----------------------------------------
+PATH: /organization/users/{user_id}
+METHOD: POST
+OPERATION ID: modify-user
+SUMMARY: Modifies a user's role in the organization.
+PARAMETERS:
+  - user_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/UserRoleUpdateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/User"}
+----------------------------------------
+PATH: /organization/users/{user_id}
+METHOD: DELETE
+OPERATION ID: delete-user
+SUMMARY: Deletes a user from the organization.
+PARAMETERS:
+  - user_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UserDeleteResponse"}
+----------------------------------------
+PATH: /realtime/sessions
+METHOD: POST
+OPERATION ID: create-realtime-session
+SUMMARY: Create an ephemeral API token for use in client-side applications with the
+Realtime API. Can be configured with the same session parameters as the
+`session.update` client event.
+
+It responds with a session object, plus a `client_secret` key which contains
+a usable ephemeral API token that can be used to authenticate browser clients
+for the Realtime API.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/RealtimeSessionCreateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RealtimeSessionCreateResponse"}
+----------------------------------------
+PATH: /realtime/transcription_sessions
+METHOD: POST
+OPERATION ID: create-realtime-transcription-session
+SUMMARY: Create an ephemeral API token for use in client-side applications with the
+Realtime API specifically for realtime transcriptions. 
+Can be configured with the same session parameters as the `transcription_session.update` client event.
+
+It responds with a session object, plus a `client_secret` key which contains
+a usable ephemeral API token that can be used to authenticate browser clients
+for the Realtime API.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/RealtimeTranscriptionSessionCreateRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RealtimeTranscriptionSessionCreateResponse"}
+----------------------------------------
+PATH: /responses
+METHOD: POST
+OPERATION ID: createResponse
+SUMMARY: Creates a model response. Provide [text](/docs/guides/text) or
+[image](/docs/guides/images) inputs to generate [text](/docs/guides/text)
+or [JSON](/docs/guides/structured-outputs) outputs. Have the model call
+your own [custom code](/docs/guides/function-calling) or use built-in
+[tools](/docs/guides/tools) like [web search](/docs/guides/tools-web-search)
+or [file search](/docs/guides/tools-file-search) to use your own data
+as input for the model's response.
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateResponse"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Response"}
+----------------------------------------
+PATH: /responses/{response_id}
+METHOD: GET
+OPERATION ID: getResponse
+SUMMARY: Retrieves a model response with the given ID.
+
+PARAMETERS:
+  - response_id (in: path, required: true, type: string)
+  - include (in: query, required: null, type: array)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Response"}
+----------------------------------------
+PATH: /responses/{response_id}
+METHOD: DELETE
+OPERATION ID: deleteResponse
+SUMMARY: Deletes a model response with the given ID.
+
+PARAMETERS:
+  - response_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+  None
+----------------------------------------
+PATH: /responses/{response_id}/input_items
+METHOD: GET
+OPERATION ID: listInputItems
+SUMMARY: Returns a list of input items for a given response.
+PARAMETERS:
+  - response_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+  - include (in: query, required: null, type: array)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ResponseItemList"}
+----------------------------------------
+PATH: /threads
+METHOD: POST
+OPERATION ID: createThread
+SUMMARY: Create a thread.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateThreadRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ThreadObject"}
+----------------------------------------
+PATH: /threads/runs
+METHOD: POST
+OPERATION ID: createThreadAndRun
+SUMMARY: Create a thread and run it in one request.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateThreadAndRunRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RunObject"}
+----------------------------------------
+PATH: /threads/{thread_id}
+METHOD: GET
+OPERATION ID: getThread
+SUMMARY: Retrieves a thread.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ThreadObject"}
+----------------------------------------
+PATH: /threads/{thread_id}
+METHOD: POST
+OPERATION ID: modifyThread
+SUMMARY: Modifies a thread.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ModifyThreadRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ThreadObject"}
+----------------------------------------
+PATH: /threads/{thread_id}
+METHOD: DELETE
+OPERATION ID: deleteThread
+SUMMARY: Delete a thread.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteThreadResponse"}
+----------------------------------------
+PATH: /threads/{thread_id}/messages
+METHOD: GET
+OPERATION ID: listMessages
+SUMMARY: Returns a list of messages for a given thread.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+  - run_id (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListMessagesResponse"}
+----------------------------------------
+PATH: /threads/{thread_id}/messages
+METHOD: POST
+OPERATION ID: createMessage
+SUMMARY: Create a message.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateMessageRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/MessageObject"}
+----------------------------------------
+PATH: /threads/{thread_id}/messages/{message_id}
+METHOD: GET
+OPERATION ID: getMessage
+SUMMARY: Retrieve a message.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - message_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/MessageObject"}
+----------------------------------------
+PATH: /threads/{thread_id}/messages/{message_id}
+METHOD: POST
+OPERATION ID: modifyMessage
+SUMMARY: Modifies a message.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - message_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ModifyMessageRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/MessageObject"}
+----------------------------------------
+PATH: /threads/{thread_id}/messages/{message_id}
+METHOD: DELETE
+OPERATION ID: deleteMessage
+SUMMARY: Deletes a message.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - message_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteMessageResponse"}
+----------------------------------------
+PATH: /threads/{thread_id}/runs
+METHOD: GET
+OPERATION ID: listRuns
+SUMMARY: Returns a list of runs belonging to a thread.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListRunsResponse"}
+----------------------------------------
+PATH: /threads/{thread_id}/runs
+METHOD: POST
+OPERATION ID: createRun
+SUMMARY: Create a run.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - include[] (in: query, required: null, type: array)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateRunRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RunObject"}
+----------------------------------------
+PATH: /threads/{thread_id}/runs/{run_id}
+METHOD: GET
+OPERATION ID: getRun
+SUMMARY: Retrieves a run.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RunObject"}
+----------------------------------------
+PATH: /threads/{thread_id}/runs/{run_id}
+METHOD: POST
+OPERATION ID: modifyRun
+SUMMARY: Modifies a run.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/ModifyRunRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RunObject"}
+----------------------------------------
+PATH: /threads/{thread_id}/runs/{run_id}/cancel
+METHOD: POST
+OPERATION ID: cancelRun
+SUMMARY: Cancels a run that is `in_progress`.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RunObject"}
+----------------------------------------
+PATH: /threads/{thread_id}/runs/{run_id}/steps
+METHOD: GET
+OPERATION ID: listRunSteps
+SUMMARY: Returns a list of run steps belonging to a run.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+  - include[] (in: query, required: null, type: array)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListRunStepsResponse"}
+----------------------------------------
+PATH: /threads/{thread_id}/runs/{run_id}/steps/{step_id}
+METHOD: GET
+OPERATION ID: getRunStep
+SUMMARY: Retrieves a run step.
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+  - step_id (in: path, required: true, type: string)
+  - include[] (in: query, required: null, type: array)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RunStepObject"}
+----------------------------------------
+PATH: /threads/{thread_id}/runs/{run_id}/submit_tool_outputs
+METHOD: POST
+OPERATION ID: submitToolOuputsToRun
+SUMMARY: When a run has the `status: "requires_action"` and `required_action.type` is `submit_tool_outputs`, this endpoint can be used to submit the outputs from the tool calls once they're all completed. All outputs must be submitted in a single request.
+
+PARAMETERS:
+  - thread_id (in: path, required: true, type: string)
+  - run_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/SubmitToolOutputsRunRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/RunObject"}
+----------------------------------------
+PATH: /uploads
+METHOD: POST
+OPERATION ID: createUpload
+SUMMARY: Creates an intermediate [Upload](/docs/api-reference/uploads/object) object
+that you can add [Parts](/docs/api-reference/uploads/part-object) to.
+Currently, an Upload can accept at most 8 GB in total and expires after an
+hour after you create it.
+
+Once you complete the Upload, we will create a
+[File](/docs/api-reference/files/object) object that contains all the parts
+you uploaded. This File is usable in the rest of our platform as a regular
+File object.
+
+For certain `purpose` values, the correct `mime_type` must be specified. 
+Please refer to documentation for the 
+[supported MIME types for your use case](/docs/assistants/tools/file-search#supported-files).
+
+For guidance on the proper filename extensions for each purpose, please
+follow the documentation on [creating a
+File](/docs/api-reference/files/create).
+
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateUploadRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Upload"}
+----------------------------------------
+PATH: /uploads/{upload_id}/cancel
+METHOD: POST
+OPERATION ID: cancelUpload
+SUMMARY: Cancels the Upload. No Parts may be added after an Upload is cancelled.
+
+PARAMETERS:
+  - upload_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Upload"}
+----------------------------------------
+PATH: /uploads/{upload_id}/complete
+METHOD: POST
+OPERATION ID: completeUpload
+SUMMARY: Completes the [Upload](/docs/api-reference/uploads/object). 
+
+Within the returned Upload object, there is a nested [File](/docs/api-reference/files/object) object that is ready to use in the rest of the platform.
+
+You can specify the order of the Parts by passing in an ordered list of the Part IDs.
+
+The number of bytes uploaded upon completion must match the number of bytes initially specified when creating the Upload object. No Parts may be added after an Upload is completed.
+
+PARAMETERS:
+  - upload_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CompleteUploadRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/Upload"}
+----------------------------------------
+PATH: /uploads/{upload_id}/parts
+METHOD: POST
+OPERATION ID: addUploadPart
+SUMMARY: Adds a [Part](/docs/api-reference/uploads/part-object) to an [Upload](/docs/api-reference/uploads/object) object. A Part represents a chunk of bytes from the file you are trying to upload. 
+
+Each Part can be at most 64 MB, and you can add Parts until you hit the Upload maximum of 8 GB.
+
+It is possible to add multiple Parts in parallel. You can decide the intended order of the Parts when you [complete the Upload](/docs/api-reference/uploads/complete).
+
+PARAMETERS:
+  - upload_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/UploadPart"}
+----------------------------------------
+PATH: /vector_stores
+METHOD: GET
+OPERATION ID: listVectorStores
+SUMMARY: Returns a list of vector stores.
+PARAMETERS:
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListVectorStoresResponse"}
+----------------------------------------
+PATH: /vector_stores
+METHOD: POST
+OPERATION ID: createVectorStore
+SUMMARY: Create a vector store.
+PARAMETERS:
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateVectorStoreRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}
+METHOD: GET
+OPERATION ID: getVectorStore
+SUMMARY: Retrieves a vector store.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}
+METHOD: POST
+OPERATION ID: modifyVectorStore
+SUMMARY: Modifies a vector store.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/UpdateVectorStoreRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}
+METHOD: DELETE
+OPERATION ID: deleteVectorStore
+SUMMARY: Delete a vector store.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteVectorStoreResponse"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/file_batches
+METHOD: POST
+OPERATION ID: createVectorStoreFileBatch
+SUMMARY: Create a vector store file batch.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateVectorStoreFileBatchRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreFileBatchObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/file_batches/{batch_id}
+METHOD: GET
+OPERATION ID: getVectorStoreFileBatch
+SUMMARY: Retrieves a vector store file batch.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+  - batch_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreFileBatchObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/file_batches/{batch_id}/cancel
+METHOD: POST
+OPERATION ID: cancelVectorStoreFileBatch
+SUMMARY: Cancel a vector store file batch. This attempts to cancel the processing of files in this batch as soon as possible.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+  - batch_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreFileBatchObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/file_batches/{batch_id}/files
+METHOD: GET
+OPERATION ID: listFilesInVectorStoreBatch
+SUMMARY: Returns a list of vector store files in a batch.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+  - batch_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+  - filter (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListVectorStoreFilesResponse"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/files
+METHOD: GET
+OPERATION ID: listVectorStoreFiles
+SUMMARY: Returns a list of vector store files.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+  - limit (in: query, required: false, type: integer)
+  - order (in: query, required: null, type: string)
+  - after (in: query, required: null, type: string)
+  - before (in: query, required: null, type: string)
+  - filter (in: query, required: null, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/ListVectorStoreFilesResponse"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/files
+METHOD: POST
+OPERATION ID: createVectorStoreFile
+SUMMARY: Create a vector store file by attaching a [File](/docs/api-reference/files) to a [vector store](/docs/api-reference/vector-stores/object).
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/CreateVectorStoreFileRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreFileObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/files/{file_id}
+METHOD: GET
+OPERATION ID: getVectorStoreFile
+SUMMARY: Retrieves a vector store file.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+  - file_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreFileObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/files/{file_id}
+METHOD: DELETE
+OPERATION ID: deleteVectorStoreFile
+SUMMARY: Delete a vector store file. This will remove the file from the vector store but the file itself will not be deleted. To delete the file, use the [delete file](/docs/api-reference/files/delete) endpoint.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+  - file_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/DeleteVectorStoreFileResponse"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/files/{file_id}
+METHOD: POST
+OPERATION ID: updateVectorStoreFileAttributes
+SUMMARY: Update attributes on a vector store file.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+  - file_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/UpdateVectorStoreFileAttributesRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreFileObject"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/files/{file_id}/content
+METHOD: GET
+OPERATION ID: retrieveVectorStoreFileContent
+SUMMARY: Retrieve the parsed contents of a vector store file.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+  - file_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+  None
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreFileContentResponse"}
+----------------------------------------
+PATH: /vector_stores/{vector_store_id}/search
+METHOD: POST
+OPERATION ID: searchVectorStore
+SUMMARY: Search a vector store for relevant chunks based on a query and file attributes filter.
+PARAMETERS:
+  - vector_store_id (in: path, required: true, type: string)
+REQUEST BODY SCHEMA:
+{"$ref":"#/components/schemas/VectorStoreSearchRequest"}
+RESPONSE SCHEMA (200):
+{"$ref":"#/components/schemas/VectorStoreSearchResultsPage"}
+----------------------------------------

@@ -1,0 +1,54 @@
+read conversation 023
+
+download the api
+
+wget https://raw.githubusercontent.com/openai/openai-openapi/master/openapi.yaml
+
+
+jq '.paths' openai.json > openai_paths.json
+
+then
+
+jq -r '
+to_entries[] |
+.key as $path |
+(.value | to_entries[] | select(.value | type == "object")) as $methodEntry |
+{
+path: $path,
+method: $methodEntry.key,
+operationId: ($methodEntry.value.operationId // "N/A"),
+summary: ($methodEntry.value.summary // "N/A"),
+parameters: (
+($methodEntry.value.parameters // []) |
+if type == "array" then
+map({
+name,
+in,
+required,
+schemaType: (.schema.type // "unknown")
+})
+else
+[]
+end
+),
+requestBodySchema: (
+($methodEntry.value.requestBody.content["application/json"].schema // null)
+),
+responses: (
+($methodEntry.value.responses["200"].content["application/json"].schema // null)
+)
+} |
+[
+"PATH: \(.path)",
+"METHOD: \(.method | ascii_upcase)",
+"OPERATION ID: \(.operationId)",
+"SUMMARY: \(.summary)",
+"PARAMETERS:",
+( .parameters | map("  - \(.name) (in: \(.in), required: \(.required), type: \(.schemaType))") | .[] ),
+"REQUEST BODY SCHEMA:",
+( .requestBodySchema | if . == null then "  None" else (. | tostring) end ),
+"RESPONSE SCHEMA (200):",
+( .responses | if . == null then "  None" else (. | tostring) end ),
+"----------------------------------------"
+] | .[]
+' openai_paths.json > openai_api_summary.txt
