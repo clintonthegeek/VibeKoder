@@ -20,6 +20,8 @@ set(PROJECT_SOURCES
     src/mainwindow.h
     src/project.cpp
     src/project.h
+    src/projectconfig.cpp
+    src/projectconfig.h
     src/session.cpp
     src/session.h
     src/sessiontabwidget.cpp
@@ -27,7 +29,7 @@ set(PROJECT_SOURCES
     src/commandpipemanager.cpp
     src/commandpipemanager.h
     src/configmanager.cpp
-    src/configmanager.cpp
+    src/configmanager.h
     src/draggabletabwidget.cpp
     src/draggabletabwidget.h
     src/detachedwindow.cpp
@@ -40,6 +42,8 @@ set(PROJECT_SOURCES
     src/tabmanager.h
     src/appconfig.cpp
     src/appconfig.h
+    src/appconfigtypes.cpp
+    src/appconfigtypes.h
     src/projectsettingsdialog.cpp
     src/projectsettingsdialog.h
     src/projectsettingswidget.cpp
