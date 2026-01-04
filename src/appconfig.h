@@ -1,11 +1,11 @@
 #ifndef APPCONFIG_H
-#define APPCONFIG_H
+#define APPCONFIG_h
 
 #include <QObject>
 #include <QString>
 #include <QVariantMap>
 
-#include "configmanager.h"
+#include "appconfigtypes.h"
 
 class AppConfig : public QObject
 {
@@ -19,16 +19,19 @@ public:
     // Save current config to disk
     bool save() const;
 
-    // Access config values dynamically
+    // Direct access to config data
+    AppConfigData& data() { return m_data; }
+    const AppConfigData& data() const { return m_data; }
+
+    // DEPRECATED: Temporary compatibility wrappers - to be removed in Phase 5
     QVariant getValue(const QString& keyPath, const QVariant& defaultValue = QVariant()) const;
     void setValue(const QString& keyPath, const QVariant& value);
+    void setConfigMap(const QVariantMap &map);
+    QVariantMap getConfigMap() const;
 
     // Path to config folder and config file
     QString configFolder() const;
     QString configFilePath() const;
-
-    void setConfigMap(const QVariantMap &map);
-    QVariantMap getConfigMap() const;
 
 signals:
     void configChanged();
@@ -42,13 +45,9 @@ private:
     // Copy schema and templates from resource to user config folder
     void copyDefaultResources();
 
-    // Generate config.xml from schema.json (optional)
-    void generateConfigJsonFromSchema();
-
     QString m_configFolder;
     QString m_configFilePath;
-
-    ConfigManager* m_configManager = nullptr;
+    AppConfigData m_data;
 };
 
 #endif // APPCONFIG_H
