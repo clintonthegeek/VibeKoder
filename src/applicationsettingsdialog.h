@@ -1,12 +1,14 @@
-#ifndef APPLICATIONSETTINGSDIALOG_NEW_H
-#define APPLICATIONSETTINGSDIALOG_NEW_H
+#ifndef APPLICATIONSETTINGSDIALOG_H
+#define APPLICATIONSETTINGSDIALOG_H
 
 #include <QDialog>
 #include "appconfigtypes.h"
 
 class QTabWidget;
 class QComboBox;
-class ProjectSettingsDialog;
+class QLineEdit;
+class QSpinBox;
+class QDoubleSpinBox;
 
 class ApplicationSettingsDialog : public QDialog
 {
@@ -22,8 +24,15 @@ public:
 
 private:
     QTabWidget* m_tabWidget;
-    ProjectSettingsDialog* m_defaultProjectSettingsDialog;
+
+    // Default project settings widgets (simplified)
+    QLineEdit* m_defaultApiToken;
+    QLineEdit* m_defaultApiModel;
+    QSpinBox* m_defaultMaxTokens;
+    QDoubleSpinBox* m_defaultTemperature;
+
+    // App settings widgets
     QComboBox* m_timezoneCombo;
 };
 
-#endif // APPLICATIONSETTINGSDIALOG_NEW_H
+#endif // APPLICATIONSETTINGSDIALOG_H
