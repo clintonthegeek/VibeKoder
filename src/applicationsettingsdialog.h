@@ -1,11 +1,12 @@
-#ifndef APPLICATIONSETTINGSDIALOG_H
-#define APPLICATIONSETTINGSDIALOG_H
+#ifndef APPLICATIONSETTINGSDIALOG_NEW_H
+#define APPLICATIONSETTINGSDIALOG_NEW_H
 
 #include <QDialog>
-#include <QVariantMap>
+#include "appconfigtypes.h"
 
-class ProjectSettingsWidget;
+class QTabWidget;
 class QComboBox;
+class ProjectSettingsDialog;
 
 class ApplicationSettingsDialog : public QDialog
 {
@@ -13,17 +14,16 @@ class ApplicationSettingsDialog : public QDialog
 public:
     explicit ApplicationSettingsDialog(QWidget *parent = nullptr);
 
-    // Load app-wide settings from config.json
-    void loadSettings(const QVariantMap &settings);
+    // Load application settings
+    void loadSettings(const AppConfigData &data);
 
-    // Get updated app-wide settings
-    QVariantMap getSettings() const;
+    // Retrieve current settings
+    AppConfigData getSettings() const;
 
 private:
-    ProjectSettingsWidget *m_defaultProjectSettingsWidget = nullptr;
-    QComboBox *m_timezoneCombo = nullptr;
-
-    QVariantMap m_appSettings; // e.g. timezone
+    QTabWidget* m_tabWidget;
+    ProjectSettingsDialog* m_defaultProjectSettingsDialog;
+    QComboBox* m_timezoneCombo;
 };
 
-#endif // APPLICATIONSETTINGSDIALOG_H
+#endif // APPLICATIONSETTINGSDIALOG_NEW_H

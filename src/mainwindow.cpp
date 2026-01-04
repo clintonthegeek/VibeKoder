@@ -310,17 +310,11 @@ void mergeVariantMaps(QVariantMap &base, const QVariantMap &updates)
 void MainWindow::onApplicationSettings()
 {
     ApplicationSettingsDialog dlg(this);
-    QVariantMap appConfigMap = AppConfig::instance().getConfigMap();
-    qDebug() << "Loaded app config:" << appConfigMap;
-    dlg.loadSettings(appConfigMap);
+    dlg.loadSettings(AppConfig::instance().data());
+
     if (dlg.exec() == QDialog::Accepted) {
-        QVariantMap newSettings = dlg.getSettings();
-
-        // Merge newSettings into appConfigMap recursively
-        mergeVariantMaps(appConfigMap, newSettings);
-
-        // Set entire merged config at once
-        AppConfig::instance().setConfigMap(appConfigMap);
+        AppConfigData newData = dlg.getSettings();
+        AppConfig::instance().data() = newData;
 
         if (!AppConfig::instance().save()) {
             QMessageBox::warning(this, "Save Failed", "Failed to save application configuration.");
@@ -532,94 +526,41 @@ void MainWindow::onNewProject()
         return;
     }
 
-    // Replace with dynamic access to AppConfig via ConfigManager
-    QVariantMap apiSettings = appConfig.getValue("default_project_settings.api").toMap();
-    QVariantMap folders = appConfig.getValue("default_project_settings.folders").toMap();
-    QStringList sourceFileTypes = appConfig.getValue("default_project_settings.filetypes.source").toStringList();
-    QStringList docFileTypes = appConfig.getValue("default_project_settings.filetypes.docs").toStringList();
+    // 4. Get default settings and override root folder
+    ProjectConfig initialConfig = appConfig.data().defaultProjectSettings;
+    initialConfig.rootFolder = projectRootDir.absolutePath();
 
-    // Convert command_pipes QVariantMap to QMap<QString, QStringList>
-    QVariantMap cmdPipeMap = appConfig.getValue("default_project_settings.command_pipes").toMap();
-    QMap<QString, QStringList> commandPipes;
-    for (auto it = cmdPipeMap.constBegin(); it != cmdPipeMap.constEnd(); ++it) {
-        commandPipes.insert(it.key(), it.value().toStringList());
-    }
-
-    // 4. Override root folder default with the directory of the chosen project file
-    folders["root"] = projectRootDir.absolutePath();
-
-    // 5. Show ProjectSettingsDialog initialized with combined settings map
+    // 5. Show ProjectSettingsDialog initialized with defaults
     ProjectSettingsDialog dlg(this);
-
-    // Combine all initial settings into a nested QVariantMap
-    QVariantMap initialSettings;
-
-    // Insert api settings
-    initialSettings.insert("api", apiSettings);
-
-    // Insert folders settings
-    initialSettings.insert("folders", folders);
-
-    // Insert filetypes settings
-    initialSettings.insert("filetypes", QVariantMap{
-                                            {"source", QVariant::fromValue(sourceFileTypes)},
-                                            {"docs", QVariant::fromValue(docFileTypes)}
-                                        });
-
-    // Insert command_pipes settings
-    initialSettings.insert("command_pipes", QVariantMap());
-    for (auto it = commandPipes.constBegin(); it != commandPipes.constEnd(); ++it) {
-        initialSettings["command_pipes"].toMap().insert(it.key(), QVariant::fromValue(it.value()));
-    }
-
-    // Load initial settings into dialog
-    dlg.loadSettings(initialSettings);
+    dlg.loadSettings(initialConfig);
 
     if (dlg.exec() != QDialog::Accepted)
         return;
 
-    // 6. Extract updated nested settings from dialog
-    QVariantMap updatedSettings = dlg.getSettings();
+    // 6. Get user-configured settings
+    ProjectConfig newConfig = dlg.getSettings();
 
-    // Helper function to flatten and apply nested settings to Project
-    auto applySettingsToProject = [&](const QVariantMap &map) {
-        std::function<void(const QVariantMap&, const QString&)> setRec;
-        setRec = [&](const QVariantMap &m, const QString &prefix) {
-            for (auto it = m.constBegin(); it != m.constEnd(); ++it) {
-                QString key = prefix.isEmpty() ? it.key() : prefix + "." + it.key();
-                if (it.value().typeId() == QMetaType::QVariantMap) {
-                    setRec(it.value().toMap(), key);
-                } else {
-                    m_project->setValue(key, it.value());
-                }
-            }
-        };
-        setRec(map, QString());
-    };
-    applySettingsToProject(updatedSettings);
-
-    // 7. Resolve absolute root folder path from updated folders map
-    QString rootFolder = m_project->getValue("folders.root").toString();
-    if (!QDir(rootFolder).exists()) {
-        if (!QDir().mkpath(rootFolder)) {
+    // 7. Ensure root folder exists
+    if (!QDir(newConfig.rootFolder).exists()) {
+        if (!QDir().mkpath(newConfig.rootFolder)) {
             QMessageBox::warning(this, "Error", "Failed to create root folder.");
             return;
         }
     }
 
     // 8. Create subfolders relative to root
-    QString docsFolder = QDir(rootFolder).filePath(folders.value("docs").toString());
-    QString templatesFolder = QDir(rootFolder).filePath(folders.value("templates").toString());
-    QString srcFolder = QDir(rootFolder).filePath(folders.value("src").toString());
-    QString sessionsFolder = QDir(rootFolder).filePath(folders.value("sessions").toString());
+    QString rootFolder = newConfig.rootFolder;
+    QString docsFolder = QDir(rootFolder).filePath(newConfig.docsFolder);
+    QString templatesFolder = QDir(rootFolder).filePath(newConfig.templatesFolder);
+    QString srcFolder = QDir(rootFolder).filePath(newConfig.srcFolder);
+    QString sessionsFolder = QDir(rootFolder).filePath(newConfig.sessionsFolder);
     QDir().mkpath(docsFolder);
     QDir().mkpath(templatesFolder);
     QDir().mkpath(srcFolder);
     QDir().mkpath(sessionsFolder);
 
     // 9. Copy default docs and templates from system-wide config folder
-    QString configFolder = appConfig.configFolder(); // e.g. ~/.config/VibeKoder
-    QString defaultDocsSrc = QDir(configFolder).filePath("docs");
+    QString configFolder = appConfig.configFolder();
     QString defaultTemplatesSrc = QDir(configFolder).filePath("templates");
     auto copyFolderContents = [](const QString& srcDirPath, const QString& destDirPath) {
         QDir srcDir(srcDirPath);
@@ -636,48 +577,13 @@ void MainWindow::onNewProject()
             }
         }
     };
-    copyFolderContents(defaultDocsSrc, docsFolder);
     copyFolderContents(defaultTemplatesSrc, templatesFolder);
 
-    // 10. Create Project instance on heap and load it to initialize ConfigManager
+    // 10. Create Project and set config
     Project* newProject = new Project(this);
-    if (!newProject->load(filePath)) {
-        QMessageBox::warning(this, "Error", "Failed to load new project file.");
-        delete newProject;
-        return;
-    }
+    newProject->config() = newConfig;
 
-    // 11. Set values dynamically
-    newProject->setValue("api.access_token", apiSettings.value("access_token"));
-    newProject->setValue("api.model", apiSettings.value("model"));
-    newProject->setValue("api.max_tokens", apiSettings.value("max_tokens"));
-    newProject->setValue("api.temperature", apiSettings.value("temperature"));
-    newProject->setValue("api.top_p", apiSettings.value("top_p"));
-    newProject->setValue("api.frequency_penalty", apiSettings.value("frequency_penalty"));
-    newProject->setValue("api.presence_penalty", apiSettings.value("presence_penalty"));
-
-    newProject->setValue("folders.root", rootFolder);
-    newProject->setValue("folders.docs", docsFolder);
-    newProject->setValue("folders.templates", templatesFolder);
-    newProject->setValue("folders.src", srcFolder);
-    newProject->setValue("folders.sessions", sessionsFolder);
-
-    // Handle include_docs as QStringList
-    QStringList includeDocs;
-    QVariant incDocsVar = folders.value("include_docs");
-    if (incDocsVar.canConvert<QStringList>())
-        includeDocs = incDocsVar.toStringList();
-    else if (incDocsVar.canConvert<QVariantList>()) {
-        for (const QVariant& v : incDocsVar.toList())
-            includeDocs.append(v.toString());
-    }
-    newProject->setValue("folders.include_docs", QVariant::fromValue(includeDocs));
-
-    newProject->setValue("filetypes.source", QVariant::fromValue(sourceFileTypes));
-    newProject->setValue("filetypes.docs", QVariant::fromValue(docFileTypes));
-    newProject->setValue("command_pipes", QVariant::fromValue(commandPipes));
-
-    // 12. Save the new project file
+    // 11. Save the new project file
     if (!newProject->save(filePath)) {
         QMessageBox::warning(this, "Error", "Failed to save new project file.");
         delete newProject;
@@ -859,14 +765,11 @@ void MainWindow::onProjectSettingsClicked()
         return;
 
     ProjectSettingsDialog dlg(this);
-    QJsonObject jsonConfig = m_project->config().toJson();
-    dlg.loadSettings(jsonConfig.toVariantMap());
+    dlg.loadSettings(m_project->config());
 
     if (dlg.exec() == QDialog::Accepted) {
-        QVariantMap newSettings = dlg.getSettings();
-
-        // Apply nested settings into Project using helper
-        setProjectSettingsFromMap(m_project, newSettings);
+        ProjectConfig newConfig = dlg.getSettings();
+        m_project->config() = newConfig;
 
         if (!m_project->save(m_project->projectFilePath())) {
             QMessageBox::warning(this, "Save Failed", "Failed to save project file.");
