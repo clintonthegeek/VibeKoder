@@ -18,15 +18,17 @@
 ApplicationSettingsDialog::ApplicationSettingsDialog(QWidget *parent)
     : QDialog(parent)
 {
-    setWindowTitle("Application Settings");
+    setWindowTitle("Preferences");
     resize(650, 450);
 
     QVBoxLayout* mainLayout = new QVBoxLayout(this);
 
     QLabel* banner = new QLabel(
-        "<b>Application Settings:</b> These are default settings for new projects.",
+        "<b>Preferences:</b> Configure default settings used when creating <u>new</u> projects.<br>"
+        "To edit the <u>current</u> project, use <b>Project > Project Settings</b> instead.",
         this);
     banner->setWordWrap(true);
+    banner->setStyleSheet("QLabel { background-color: #e3f2fd; padding: 10px; border: 1px solid #90caf9; border-radius: 4px; }");
     mainLayout->addWidget(banner);
 
     m_tabWidget = new QTabWidget(this);
@@ -37,11 +39,10 @@ ApplicationSettingsDialog::ApplicationSettingsDialog(QWidget *parent)
     QVBoxLayout* defaultsLayout = new QVBoxLayout(defaultsTab);
 
     QLabel* defaultsInfo = new QLabel(
-        "These settings will be used when creating <b>new projects</b>. "
-        "To change settings for an existing project, use <b>Project Settings</b> instead.",
+        "These are <b>default</b> values used when creating new projects.",
         this);
     defaultsInfo->setWordWrap(true);
-    defaultsInfo->setStyleSheet("QLabel { background-color: #ffffcc; padding: 8px; border: 1px solid #cccc99; }");
+    defaultsInfo->setStyleSheet("QLabel { color: #666; font-style: italic; padding: 4px; }");
     defaultsLayout->addWidget(defaultsInfo);
 
     QFormLayout* defaultsForm = new QFormLayout();

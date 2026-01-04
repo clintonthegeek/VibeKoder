@@ -52,7 +52,7 @@ private:
 
     // UI widgets
     DraggableTabWidget* m_tabWidget = nullptr;
-
+    QAction* m_projectSettingsAction = nullptr;
 
     // Project tab widgets
     QWidget* m_projectTab = nullptr;

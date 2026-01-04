@@ -115,19 +115,29 @@ void MainWindow::setupUi()
 
     // === Menu and Toolbar ===
     QMenu* appMenu = menuBar()->addMenu("Application");
-    QAction* appSettingsAction = new QAction("Settings", this);
-    appMenu->addAction(appSettingsAction);
-    connect(appSettingsAction, &QAction::triggered, this, &MainWindow::onApplicationSettings);
+    QAction* appPreferencesAction = new QAction("Preferences...", this);
+    appPreferencesAction->setToolTip("Configure default settings for new projects");
+    appMenu->addAction(appPreferencesAction);
+    connect(appPreferencesAction, &QAction::triggered, this, &MainWindow::onApplicationSettings);
 
     QMenu* projectMenu = menuBar()->addMenu("Project");
 
-    QAction* newProjectAction = new QAction("New Project", this);
+    QAction* newProjectAction = new QAction("New Project...", this);
     projectMenu->addAction(newProjectAction);
     connect(newProjectAction, &QAction::triggered, this, &MainWindow::onNewProject);
 
-    QAction* openProjectAction = new QAction("Open Project", this);
+    QAction* openProjectAction = new QAction("Open Project...", this);
     projectMenu->addAction(openProjectAction);
     connect(openProjectAction, &QAction::triggered, this, &MainWindow::onOpenProject);
+
+    projectMenu->addSeparator();
+
+    m_projectSettingsAction = new QAction("Project Settings...", this);
+    m_projectSettingsAction->setToolTip("Edit settings for the currently loaded project (API key, folders, etc.)");
+    m_projectSettingsAction->setEnabled(false); // Disabled until project loads
+    m_projectSettingsAction->setShortcut(QKeySequence("Ctrl+,"));
+    projectMenu->addAction(m_projectSettingsAction);
+    connect(m_projectSettingsAction, &QAction::triggered, this, &MainWindow::onProjectSettingsClicked);
 
     QAction* newTempSessionAction = new QAction("New Temp Session", this);
     newTempSessionAction->setShortcut(QKeySequence("Ctrl+T"));
@@ -180,6 +190,7 @@ void MainWindow::setupUi()
 
     m_projectSettingsBtn = new QPushButton("Project Settings", m_projectTab);
     m_projectSettingsBtn->setEnabled(false); // Disabled until a project is loaded
+    m_projectSettingsBtn->setToolTip("Edit settings for the currently loaded project\n(API key, folders, file types, etc.)");
     projLayout->addWidget(m_projectSettingsBtn);
     connect(m_projectSettingsBtn, &QPushButton::clicked, this, &MainWindow::onProjectSettingsClicked);
 
@@ -757,6 +768,9 @@ void MainWindow::loadProjectDataToUi()
 
     if (m_projectSettingsBtn)
         m_projectSettingsBtn->setEnabled(true);
+
+    if (m_projectSettingsAction)
+        m_projectSettingsAction->setEnabled(true);
 }
 
 void MainWindow::onProjectSettingsClicked()
