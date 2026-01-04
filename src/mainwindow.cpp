@@ -26,6 +26,7 @@
 #include <QMessageBox>
 #include <QDebug>
 #include <QStandardPaths>
+#include <QRegularExpression>
 
 static QString wrapText(const QString &text, int maxLength = 80)
 {
@@ -62,7 +63,7 @@ void setProjectSettingsFromMap(Project* project, const QVariantMap& map, const Q
 {
     for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
         QString key = prefix.isEmpty() ? it.key() : prefix + "." + it.key();
-        if (it.value().type() == QVariant::Map) {
+        if (it.value().typeId() == QMetaType::QVariantMap) {
             setProjectSettingsFromMap(project, it.value().toMap(), key);
         } else {
             project->setValue(key, it.value());
@@ -290,7 +291,7 @@ void mergeVariantMaps(QVariantMap &base, const QVariantMap &updates)
         const QString &key = it.key();
         const QVariant &val = it.value();
 
-        if (val.type() == QVariant::Map && base.contains(key) && base.value(key).type() == QVariant::Map) {
+        if (val.typeId() == QMetaType::QVariantMap && base.contains(key) && base.value(key).typeId() == QMetaType::QVariantMap) {
             QVariantMap baseSubMap = base.value(key).toMap();
             mergeVariantMaps(baseSubMap, val.toMap());
             base[key] = baseSubMap;
@@ -472,7 +473,7 @@ void MainWindow::onNewTempSession()
     setRec = [&](const QVariantMap& map, const QString& prefix) {
         for (auto it = map.constBegin(); it != map.constEnd(); ++it) {
             QString key = prefix.isEmpty() ? it.key() : prefix + "." + it.key();
-            if (it.value().type() == QVariant::Map) {
+            if (it.value().typeId() == QMetaType::QVariantMap) {
                 setRec(it.value().toMap(), key);
             } else {
                 tempProject->setValue(key, it.value());
@@ -580,7 +581,7 @@ void MainWindow::onNewProject()
         setRec = [&](const QVariantMap &m, const QString &prefix) {
             for (auto it = m.constBegin(); it != m.constEnd(); ++it) {
                 QString key = prefix.isEmpty() ? it.key() : prefix + "." + it.key();
-                if (it.value().type() == QVariant::Map) {
+                if (it.value().typeId() == QMetaType::QVariantMap) {
                     setRec(it.value().toMap(), key);
                 } else {
                     m_project->setValue(key, it.value());
@@ -914,7 +915,7 @@ void MainWindow::refreshSessionList()
 
         // Trim leading zeros for session number display
         QString sessionNumber = baseName;
-        sessionNumber.remove(QRegExp("^0+"));
+        sessionNumber.remove(QRegularExpression("^0+"));
         if (sessionNumber.isEmpty())
             sessionNumber = "0";
 

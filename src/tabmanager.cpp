@@ -9,12 +9,6 @@
 #include <QPointer>
 #include <QHash>
 
-inline uint qHash(const QPointer<DetachedWindow> &key, uint seed = 0) noexcept
-{
-    // Hash the raw pointer inside QPointer
-    return qHash(static_cast<DetachedWindow*>(key.data()), seed);
-}
-
 TabManager::TabManager(DraggableTabWidget* mainTabWidget, QWidget* projectTab, Project* project, QObject* parent)
     : QObject(parent)
     , m_mainTabWidget(mainTabWidget)

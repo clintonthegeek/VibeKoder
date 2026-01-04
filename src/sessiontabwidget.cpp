@@ -359,7 +359,7 @@ void SessionTabWidget::onSaveSliceAsMarkdown()
 
     // Prepare default file name: "Session#SliceTIMESTAMP.md"
     QString timestampSafe = slice.timestamp;
-    timestampSafe.replace(QRegExp("[^0-9]"), ""); // remove non-digits for filename
+    timestampSafe.replace(QRegularExpression("[^0-9]"), ""); // remove non-digits for filename
     QString baseName = QString("Session%1_Slice%2")
                            .arg(QFileInfo(m_sessionFilePath).completeBaseName())
                            .arg(timestampSafe);

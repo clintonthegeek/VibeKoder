@@ -845,7 +845,7 @@ QString Session::serializeSessionFile() const
         for (auto it = m_metadata.constBegin(); it != m_metadata.constEnd(); ++it) {
             QString key = it.key();
             QString val = it.value().toString();
-            if (val.contains(QRegExp(R"(\s)")) || val.contains(":")) {
+            if (val.contains(QRegularExpression(R"(\s)")) || val.contains(":")) {
                 val = "\"" + val.replace("\"", "\\\"") + "\"";
             }
             result += QString("%1: %2\n").arg(key, val);

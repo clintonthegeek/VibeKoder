@@ -42,4 +42,11 @@ private:
 
     void logState(const QString& prefix = QString()) const;
 };
+
+// qHash specialization for QPointer<DetachedWindow> to enable use in QSet/QHash
+inline size_t qHash(const QPointer<DetachedWindow>& key, size_t seed = 0)
+{
+    return qHash(key.data(), seed);
+}
+
 #endif // DETACHEDWINDOW_H
