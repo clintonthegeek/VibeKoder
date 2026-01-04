@@ -685,11 +685,16 @@ void MainWindow::updateBackendConfigForAllSessions()
     config["frequency_penalty"] = m_project->frequencyPenalty();
     config["presence_penalty"] = m_project->presencePenalty();
 
-    for (SessionTabWidget* tab : m_openSessions) {
-        if (tab) {
-            // Assuming you add a method to SessionTabWidget to update backend config
-            tab->updateBackendConfig(config);
+    // Use TabManager's list of open sessions, not MainWindow's stale m_openSessions
+    if (m_tabManager) {
+        QMap<QString, SessionTabWidget*> openSessions = m_tabManager->openSessions();
+        for (SessionTabWidget* tab : openSessions) {
+            if (tab) {
+                qDebug() << "[MainWindow] Updating backend config for session:" << tab;
+                tab->updateBackendConfig(config);
+            }
         }
+        qDebug() << "[MainWindow] Updated backend config for" << openSessions.size() << "open sessions";
     }
 }
 
