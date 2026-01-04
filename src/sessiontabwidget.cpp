@@ -49,13 +49,14 @@ SessionTabWidget::SessionTabWidget(const QString& sessionPath, Project* project,
 
     QVariantMap config;
 
-    if (m_project && m_project->configManager()) {
-        QVariantMap fullConfig = m_project->configManager()->configObject().toVariantMap();
-        if (fullConfig.contains("api") && fullConfig.value("api").canConvert<QVariantMap>()) {
-            config = fullConfig.value("api").toMap();
-        } else {
-            config = fullConfig;
-        }
+    if (m_project) {
+        config["access_token"] = m_project->accessToken();
+        config["model"] = m_project->model();
+        config["max_tokens"] = m_project->maxTokens();
+        config["temperature"] = m_project->temperature();
+        config["top_p"] = m_project->topP();
+        config["frequency_penalty"] = m_project->frequencyPenalty();
+        config["presence_penalty"] = m_project->presencePenalty();
         qDebug() << "[SessionTabWidget] Loaded aiBackend config from Project config.";
 
     } else {

@@ -95,9 +95,15 @@ MainWindow::~MainWindow()
 AIBackend* createBackendForProject(Project* project, QObject* parent = nullptr)
 {
     OpenAIBackend* backend = new OpenAIBackend(parent);
-    if (project && project->configManager()) {
-        QVariantMap fullConfig = project->configManager()->configObject().toVariantMap();
-        QVariantMap apiConfig = fullConfig.value("api").toMap();
+    if (project) {
+        QVariantMap apiConfig;
+        apiConfig["access_token"] = project->accessToken();
+        apiConfig["model"] = project->model();
+        apiConfig["max_tokens"] = project->maxTokens();
+        apiConfig["temperature"] = project->temperature();
+        apiConfig["top_p"] = project->topP();
+        apiConfig["frequency_penalty"] = project->frequencyPenalty();
+        apiConfig["presence_penalty"] = project->presencePenalty();
         backend->setConfig(apiConfig);
     }
     return backend;
@@ -853,7 +859,8 @@ void MainWindow::onProjectSettingsClicked()
         return;
 
     ProjectSettingsDialog dlg(this);
-    dlg.loadSettings(m_project->configManager()->configObject().toVariantMap());
+    QJsonObject jsonConfig = m_project->config().toJson();
+    dlg.loadSettings(jsonConfig.toVariantMap());
 
     if (dlg.exec() == QDialog::Accepted) {
         QVariantMap newSettings = dlg.getSettings();
